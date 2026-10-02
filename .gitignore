@@ -1,0 +1,17 @@
+/.idea/
+/.gradle/
+/build/
+/run/
+/bin/
+/.classpath/
+/.project/
+/.settings/
+/painpepe-recode-fabric_client.launch/
+/painpepe-recode-fabric_server.launch/
+# локальное
+*.iml
+*.log
+/out/
+.DS_Store
+__pycache__/
+*.pyc

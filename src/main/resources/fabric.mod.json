@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "id": "pain",
+  "version": "1.2",
+  "name": "Pain",
+  "description": "Pain Client — клиент для Minecraft 1.21.4 (Fabric)",
+  "authors": ["ItzSkater"],
+  "contact": {
+    "homepage": "https://github.com/ItzSkater/Pain",
+    "sources": "https://github.com/ItzSkater/Pain",
+    "issues": "https://github.com/ItzSkater/Pain/issues"
+  },
+  "license": "GPL-3.0-only",
+  "icon": "assets/pain/icons/avatar.png",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      {
+        "adapter": "default",
+        "value": "tech.pain.Pain::INSTANCE"
+      }
+    ]
+  },
+  "mixins": [
+    "pain.mixins.json"
+  ],
+  "accessWidener": "pain.accesswidener",
+  "depends": {
+    "fabricloader": ">=0.16.10",
+    "fabric": "*",
+    "minecraft": "1.21.4"
+  }
+}
