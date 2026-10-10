@@ -116,7 +116,7 @@ public final class ModuleManager implements IMinecraft {
       registerModule(AutoTotem.INSTANCE);
       registerModule(tech.pain.client.modules.impl.combat.Criticals.INSTANCE);
       registerModule(tech.pain.client.modules.impl.combat.AttributeSwap.INSTANCE);
-      registerModule(tech.pain.client.modules.impl.combat.BowAimbot.INSTANCE);
+      registerModule(tech.pain.client.modules.impl.combat.RageBot.INSTANCE);
       registerAlpha("tech.pain.client.modules.impl.combat.ElytraTarget");
       registerModule(ClickPearl.INSTANCE);
       registerModule(CrystalAura.INSTANCE);
@@ -197,6 +197,7 @@ public final class ModuleManager implements IMinecraft {
          registerModule(tech.pain.client.modules.impl.misc.ChatLyrics.INSTANCE);
       }
       registerModule(tech.pain.client.modules.impl.misc.Spammer.INSTANCE);
+      registerModule(tech.pain.client.modules.impl.misc.HitSound.INSTANCE);
       registerModule(tech.pain.client.modules.impl.player.AutoWarden.INSTANCE);
       registerModule(tech.pain.client.modules.impl.render.Weather.INSTANCE);
       registerAlpha("tech.pain.client.modules.impl.render.HitEffect");

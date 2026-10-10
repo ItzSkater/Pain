@@ -2,7 +2,50 @@
   "thunder_rain": {
     "category": "weather",
     "sounds": [
-      { "name": "pain:thunder_rain", "stream": true }
+      {
+        "name": "pain:thunder_rain",
+        "stream": true
+      }
+    ]
+  },
+  "hit_bell": {
+    "category": "player",
+    "sounds": [
+      {
+        "name": "pain:hit_bell"
+      }
+    ]
+  },
+  "hit_metal": {
+    "category": "player",
+    "sounds": [
+      {
+        "name": "pain:hit_metal"
+      }
+    ]
+  },
+  "hit_bubble": {
+    "category": "player",
+    "sounds": [
+      {
+        "name": "pain:hit_bubble"
+      }
+    ]
+  },
+  "hit_click": {
+    "category": "player",
+    "sounds": [
+      {
+        "name": "pain:hit_click"
+      }
+    ]
+  },
+  "hit_crit": {
+    "category": "player",
+    "sounds": [
+      {
+        "name": "pain:hit_crit"
+      }
     ]
   }
 }

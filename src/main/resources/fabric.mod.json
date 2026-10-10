@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "pain",
-  "version": "1.2",
+  "version": "1.2.1",
   "name": "Pain",
   "description": "Pain Client — клиент для Minecraft 1.21.4 (Fabric)",
   "authors": ["ItzSkater"],
