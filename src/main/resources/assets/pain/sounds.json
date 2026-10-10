@@ -47,5 +47,13 @@
         "name": "pain:hit_crit"
       }
     ]
+  },
+  "nonagon_shoot": {
+    "category": "player",
+    "sounds": [
+      {
+        "name": "pain:nonagon_shoot"
+      }
+    ]
   }
 }

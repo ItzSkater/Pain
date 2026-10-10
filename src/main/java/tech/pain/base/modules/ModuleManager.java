@@ -198,6 +198,7 @@ public final class ModuleManager implements IMinecraft {
       }
       registerModule(tech.pain.client.modules.impl.misc.Spammer.INSTANCE);
       registerModule(tech.pain.client.modules.impl.misc.HitSound.INSTANCE);
+      registerModule(tech.pain.client.modules.impl.misc.ShootSounds.INSTANCE);
       registerModule(tech.pain.client.modules.impl.player.AutoWarden.INSTANCE);
       registerModule(tech.pain.client.modules.impl.render.Weather.INSTANCE);
       registerAlpha("tech.pain.client.modules.impl.render.HitEffect");

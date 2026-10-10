@@ -216,7 +216,7 @@ public class PainTitleScreen extends Screen implements IMinecraft {
       tech.pain.client.modules.impl.render.CoolInterface menuModule = tech.pain.client.modules.impl.render.CoolInterface.INSTANCE;
       ColorRGBA titleColor = menuModule.titleColor.is("Тема") ? c1 : (menuModule.titleColor.is("Чёрный") ? new ColorRGBA(0, 0, 0) : new ColorRGBA(255, 255, 255));
       ctx.drawText(Fonts.BOLD.getFont(titleSize), title + tail, tx, top + 48.0F, titleColor.withAlpha(alpha));
-      String sub = tech.pain.Edition.NAME + "  ·  v1.2.1  ·  Minecraft 1.21.4";
+      String sub = tech.pain.Edition.NAME + "  ·  v1.2.2  ·  Minecraft 1.21.4";
       float subW = Fonts.REGULAR.getWidth(sub, 8.0F);
       ctx.drawText(Fonts.REGULAR.getFont(8.0F), sub, cx - subW / 2.0F, top + 82.0F, new ColorRGBA(220, 220, 232, (int)(170.0F * appear)));
 
@@ -246,7 +246,7 @@ public class PainTitleScreen extends Screen implements IMinecraft {
       this.chip(ctx, m, chipX, sh - 36.0F, "Стекло: " + menuModule.glass.get(), appear, () -> cycle(menuModule.glass));
       // подписи по углам
       String name = mc.getSession().getUsername();
-      ctx.drawText(Fonts.REGULAR.getFont(7.0F), "Pain " + tech.pain.Edition.NAME + " v1.2.1", 10.0F, sh - 14.0F, new ColorRGBA(220, 220, 232, (int)(150.0F * appear)));
+      ctx.drawText(Fonts.REGULAR.getFont(7.0F), "Pain " + tech.pain.Edition.NAME + " v1.2.2", 10.0F, sh - 14.0F, new ColorRGBA(220, 220, 232, (int)(150.0F * appear)));
       float nameW = Fonts.MEDIUM.getWidth(name, 7.5F);
       DrawUtil.drawRoundedRect(m, sw - nameW - 32.0F, sh - 20.0F, 6.0F, 6.0F, BorderRadius.all(3.0F), new ColorRGBA(60, 220, 110, alpha));
       ctx.drawText(Fonts.MEDIUM.getFont(7.5F), name, sw - nameW - 22.0F, sh - 21.0F, new ColorRGBA(240, 240, 248, alpha));

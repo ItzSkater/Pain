@@ -22,6 +22,7 @@
   Оба скачаны автором проекта; условия использования — по лицензии на странице оригинала. **TODO: вписать ссылки на оригиналы и их лицензии.**
 - **Claw'd** — талисман Claude Code, принадлежит Anthropic. Модели в `assets/pain/models/pet_*` — фанатская работа, к Anthropic отношения не имеют.
 - **Звук грозы** `assets/pain/sounds/` — запись с freesound.org (mshahen, «rain_thunder_birds_cars»). **TODO: вписать лицензию со страницы записи.**
+- **Звук «Nonagon shoot»** `assets/pain/sounds/nonagon_shoot.ogg` — прислан автором проекта, источник и лицензия не установлены. **TODO: найти автора или заменить.**
 - **Картинка «Котозаяц»** `assets/pain/icons/kotozayac.png` и **обои** `assets/pain/textures/wallpaper/` — взяты из сети, автор не установлен. **TODO: найти автора или заменить.**
 - **Шрифты и иконки** в `assets/pain/fonts/` — под лицензиями их авторов. **TODO: перечислить.**
 
