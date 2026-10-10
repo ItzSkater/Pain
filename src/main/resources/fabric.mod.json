@@ -5,12 +5,8 @@
   "name": "Pain",
   "description": "Pain Client — клиент для Minecraft 1.21.4 (Fabric)",
   "authors": ["ItzSkater"],
-  "contact": {
-    "homepage": "https://github.com/ItzSkater/Pain",
-    "sources": "https://github.com/ItzSkater/Pain",
-    "issues": "https://github.com/ItzSkater/Pain/issues"
-  },
-  "license": "GPL-3.0-only",
+  "contact": {},
+  "license": "GPL-3.0-or-later",
   "icon": "assets/pain/icons/avatar.png",
   "environment": "client",
   "entrypoints": {
@@ -19,12 +15,20 @@
         "adapter": "default",
         "value": "tech.pain.Pain::INSTANCE"
       }
+    ],
+    "preLaunch": [
+      "tech.pain.base.shaders.ShaderBootstrap"
     ]
   },
   "mixins": [
     "pain.mixins.json"
   ],
   "accessWidener": "pain.accesswidener",
+  "jars": [
+    { "file": "META-INF/jars/mcpfabric-0.5.0+1.21.4.jar" },
+    { "file": "META-INF/jars/sodium-fabric-0.6.13+mc1.21.4.jar" },
+    { "file": "META-INF/jars/iris-fabric-1.8.8+mc1.21.4.jar" }
+  ],
   "depends": {
     "fabricloader": ">=0.16.10",
     "fabric": "*",

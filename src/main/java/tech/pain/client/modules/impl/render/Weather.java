@@ -29,14 +29,14 @@ import tech.pain.client.modules.api.setting.impl.ModeSetting;
 import tech.pain.client.modules.api.setting.impl.NumberSetting;
 
 /**
- * Своя погода без ванильных частиц: частицы считаются и рисуются модулем.
+ * Модуль Particles (раньше Weather): своя погода без ванильных частиц: частицы считаются и рисуются модулем.
  * Дождь — вытянутые струи с кругами брызг на земле, снег — мягкие хлопья с покачиванием,
  * листопад — листья-полигоны, которые кувыркаются, планируют и остаются лежать на земле.
  */
 @ModuleAnnotation(
-   name = "Weather",
+   name = "Particles",
    category = Category.RENDER,
-   description = "Реалистичные снег, дождь и осенний листопад (только у тебя)"
+   description = "Частицы в мире: снежинки, метель, дождь, листопад — с выбором цвета (только у тебя)"
 )
 public final class Weather extends Module {
    public static final Weather INSTANCE = new Weather();
@@ -48,7 +48,11 @@ public final class Weather extends Module {
    private static final int[][] SAKURA = new int[][]{{255, 183, 213}, {255, 160, 200}, {250, 205, 225}, {240, 140, 185}};
    // контур листа: (позиция вдоль, полуширина)
    private static final float[][] LEAF_SHAPE = new float[][]{{0.0F, 0.0F}, {0.12F, 0.2F}, {0.3F, 0.36F}, {0.5F, 0.4F}, {0.7F, 0.3F}, {0.88F, 0.14F}, {1.0F, 0.0F}};
-   private final ModeSetting type = new ModeSetting("Погода", "Снег", "Метель", "Дождь", "Листопад");
+   private final ModeSetting type = new ModeSetting("Частицы", "Снег", "Метель", "Дождь", "Листопад");
+   private final ModeSetting snowStyle = new ModeSetting("Вид снега", () -> this.type.is("Снег") || this.type.is("Метель"), "Снежинки", "Хлопья");
+   private final ModeSetting colorMode = new ModeSetting("Цвет", "Обычный", "Тема", "Радуга", "Свой");
+   private final tech.pain.client.modules.api.setting.impl.ColorSetting customColor = new tech.pain.client.modules.api.setting.impl.ColorSetting("Свой цвет", new tech.pain.utility.render.display.base.color.ColorRGBA(150, 210, 255), () -> this.colorMode.is("Свой"));
+   private final NumberSetting sizeScale = new NumberSetting("Размер", 1.0F, 0.5F, 3.0F, 0.1F);
    private final ModeSetting leaves = new ModeSetting("Листья", () -> this.type.is("Листопад"), "Осенние", "Сакура");
    private final NumberSetting density = new NumberSetting("Плотность", 5.0F, 1.0F, 10.0F, 0.5F);
    private final NumberSetting radius = new NumberSetting("Радиус", 18.0F, 8.0F, 32.0F, 1.0F);
@@ -112,7 +116,7 @@ public final class Weather extends Module {
       boolean blizzard = this.type.is("Метель");
       float r = this.radius.getCurrent();
       float d = this.density.getCurrent();
-      int target = (int)(d * (kind == RAIN ? 170.0F : (kind == LEAF ? 26.0F : (blizzard ? 260.0F : 150.0F))) * (r / 18.0F) * (r / 18.0F));
+      int target = (int)(d * (kind == RAIN ? 170.0F : (kind == LEAF ? 26.0F : (blizzard ? 260.0F : 150.0F) * (this.snowStyle.is("Снежинки") ? 0.6F : 1.0F))) * (r / 18.0F) * (r / 18.0F));
       double time = (double)now / 1000.0;
       // ветер плавно гуляет по направлению и силе
       double windAngle = time * 0.07 + Math.sin(time * 0.31) * 0.6;
@@ -193,11 +197,16 @@ public final class Weather extends Module {
          int[][] palette = this.leaves.is("Сакура") ? SAKURA : AUTUMN;
          int[] c = palette[rnd.nextInt(palette.length)];
          float tone = rnd.nextFloat() * 0.25F + 0.85F;
+         if (!this.colorMode.is("Обычный")) {
+            // листья красим выбранным цветом вместо осенней палитры
+            c = this.tint(p, c[0], c[1], c[2], 1.0F);
+         }
+
          p.red = Math.min(255.0F, (float)c[0] * tone);
          p.green = Math.min(255.0F, (float)c[1] * tone);
          p.blue = Math.min(255.0F, (float)c[2] * tone);
          p.speed = rnd.nextFloat() * 0.6F + 0.75F;
-         p.size = this.leaves.is("Сакура") ? rnd.nextFloat() * 0.05F + 0.07F : rnd.nextFloat() * 0.11F + 0.13F;
+         p.size = (this.leaves.is("Сакура") ? rnd.nextFloat() * 0.05F + 0.07F : rnd.nextFloat() * 0.11F + 0.13F) * this.sizeScale.getCurrent();
          p.spinA = rnd.nextFloat() * 4.0F - 2.0F;
          p.spinB = rnd.nextFloat() * 5.0F + 2.0F;
          p.alpha = 1.0F;
@@ -334,10 +343,18 @@ public final class Weather extends Module {
       }
 
       // дальние хлопья чуть крупнее на вид, чтобы не превращались в точки
-      float s = p.size * (1.0F + Math.min(dist, 20.0F) * 0.035F);
+      float s = p.size * this.sizeScale.getCurrent() * (1.0F + Math.min(dist, 20.0F) * 0.035F);
       int c = (int)(235.0F * light + 20.0F);
-      int center = color(c, c, Math.min(255, c + 8), a);
-      int edge = color(c, c, Math.min(255, c + 8), 0.0F);
+      int[] rgb = this.tint(p, c, c, Math.min(255, c + 8), Math.max(light, 0.75F));
+      if (this.snowStyle.is("Снежинки") && dist < 16.0F) {
+         // настоящая снежинка: шесть лучей с веточками, медленно вращается; на земле лежит неподвижно
+         float spin = p.landed ? p.phase : p.phase + (float)((double)System.currentTimeMillis() / 1000.0 % 1000.0) * (p.phase2 > 3.14F ? 0.6F : -0.6F);
+         tech.pain.utility.render.level.ParticleShapes.snowflake(bb, mat, x, y, z, right, up, s * 1.9F, spin, rgb[0] << 16 | rgb[1] << 8 | rgb[2], a);
+         return;
+      }
+
+      int center = color(rgb[0], rgb[1], rgb[2], a);
+      int edge = color(rgb[0], rgb[1], rgb[2], 0.0F);
       int segments = 7;
 
       for (int i = 0; i < segments; ++i) {
@@ -373,18 +390,16 @@ public final class Weather extends Module {
          return;
       }
 
-      float w = 0.011F;
+      float w = 0.011F * this.sizeScale.getCurrent();
       sx = sx / sl * w;
       sy = sy / sl * w;
       sz = sz / sl * w;
       float tx = x - dx * len;
       float ty = y - dy * len;
       float tz = z - dz * len;
-      int r = (int)(175.0F * light + 20.0F);
-      int g = (int)(195.0F * light + 20.0F);
-      int b = (int)(225.0F * light + 25.0F);
-      int head = color(r, g, b, p.alpha * fade);
-      int tail = color(r, g, b, 0.0F);
+      int[] rgb = this.tint(p, (int)(175.0F * light + 20.0F), (int)(195.0F * light + 20.0F), (int)(225.0F * light + 25.0F), Math.max(light, 0.75F));
+      int head = color(rgb[0], rgb[1], rgb[2], p.alpha * fade);
+      int tail = color(rgb[0], rgb[1], rgb[2], 0.0F);
       bb.vertex(mat, tx - sx, ty - sy, tz - sz).color(tail);
       bb.vertex(mat, tx + sx, ty + sy, tz + sz).color(tail);
       bb.vertex(mat, x + sx, y + sy, z + sz).color(head);
@@ -400,8 +415,9 @@ public final class Weather extends Module {
       float inner = outer * 0.72F;
       float a = p.alpha * fade * (1.0F - t) * 0.9F;
       int r = (int)(190.0F * light + 20.0F);
-      int c = color(r, r + 8, Math.min(255, r + 30), a);
-      int clear = color(r, r + 8, Math.min(255, r + 30), 0.0F);
+      int[] rgb = this.tint(p, r, r + 8, Math.min(255, r + 30), Math.max(light, 0.75F));
+      int c = color(rgb[0], rgb[1], rgb[2], a);
+      int clear = color(rgb[0], rgb[1], rgb[2], 0.0F);
       int segments = 8;
 
       for (int i = 0; i < segments; ++i) {
@@ -465,6 +481,26 @@ public final class Weather extends Module {
       bb.vertex(mat, ox + along.x * 0.5F + across.x * vw + n.x * lift, oy + along.y * 0.5F + across.y * vw + n.y * lift, oz + along.z * 0.5F + across.z * vw + n.z * lift).color(vein);
       bb.vertex(mat, ox + along.x * 0.95F + n.x * lift, oy + along.y * 0.95F + n.y * lift, oz + along.z * 0.95F + n.z * lift).color(vein);
       bb.vertex(mat, ox + along.x * 0.5F - across.x * vw + n.x * lift, oy + along.y * 0.5F - across.y * vw + n.y * lift, oz + along.z * 0.5F - across.z * vw + n.z * lift).color(vein);
+   }
+
+   /** Цвет частицы по настройке «Цвет»; r,g,b — обычный цвет этого вида частиц. Возвращает {r,g,b}. */
+   private int[] tint(Particle p, int r, int g, int b, float light) {
+      if (this.colorMode.is("Свой")) {
+         tech.pain.utility.render.display.base.color.ColorRGBA c = this.customColor.getColor();
+         return new int[]{(int)((float)c.getRed() * light), (int)((float)c.getGreen() * light), (int)((float)c.getBlue() * light)};
+      }
+
+      if (this.colorMode.is("Тема")) {
+         tech.pain.utility.render.display.base.color.ColorRGBA c = tech.pain.Pain.getInstance().getThemeManager().getClientColor((int)(p.phase * 57.3F));
+         return new int[]{(int)((float)c.getRed() * light), (int)((float)c.getGreen() * light), (int)((float)c.getBlue() * light)};
+      }
+
+      if (this.colorMode.is("Радуга")) {
+         int rgb = tech.pain.utility.render.level.ParticleShapes.rainbow(p.phase / 6.2832F, 0.65F, 1.0F);
+         return new int[]{(int)((float)(rgb >> 16 & 255) * light), (int)((float)(rgb >> 8 & 255) * light), (int)((float)(rgb & 255) * light)};
+      }
+
+      return new int[]{r, g, b};
    }
 
    private static int color(int r, int g, int b, float alpha) {

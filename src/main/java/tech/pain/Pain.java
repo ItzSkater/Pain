@@ -91,6 +91,7 @@ public enum Pain implements ClientModInitializer {
          this.autoBuyManager = new AutoBuyManager();
          this.commandManager = new CommandManager();
          this.scriptManager = new ScriptManager();
+         tech.pain.base.mcp.PainMcp.init();
          try {
             this.discordManager = new DiscordManager();
          } catch (Throwable e) {

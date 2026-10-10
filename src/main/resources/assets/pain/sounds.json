@@ -1,0 +1,8 @@
+{
+  "thunder_rain": {
+    "category": "weather",
+    "sounds": [
+      { "name": "pain:thunder_rain", "stream": true }
+    ]
+  }
+}

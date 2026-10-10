@@ -38,6 +38,10 @@ public final class DrawUtil implements IWindow {
    private static GlProgram gradientRectangleProgram;
    private static GlProgram blurProgram;
    private static GlProgram metaballsProgram;
+   private static GlProgram distortProgram;
+   public static GlProgram impactProgram;
+   public static GlProgram skyProgram;
+   private static GlProgram lensRainProgram;
    private static final CustomRenderTarget buffer = new CustomRenderTarget(false);
    private static final Supplier<SimpleFramebuffer> TEMP_FBO_SUPPLIER = Suppliers.memoize(() -> {
       return new SimpleFramebuffer(1920, 1024, false);
@@ -55,6 +59,10 @@ public final class DrawUtil implements IWindow {
       gradientRectangleProgram = new GlProgram(Pain.id("gradient_rectangle/data"), VertexFormats.POSITION_COLOR);
       blurProgram = new GlProgram(Pain.id("blur/data"), VertexFormats.POSITION_COLOR);
       metaballsProgram = new GlProgram(Pain.id("metanoise/data"), VertexFormats.POSITION_COLOR);
+      distortProgram = new GlProgram(Pain.id("distort/data"), VertexFormats.POSITION_COLOR);
+      impactProgram = new GlProgram(Pain.id("impact/data"), VertexFormats.POSITION_COLOR);
+      skyProgram = new GlProgram(Pain.id("sky/data"), VertexFormats.POSITION_COLOR);
+      lensRainProgram = new GlProgram(Pain.id("lensrain/data"), VertexFormats.POSITION_COLOR);
    }
 
    public static void updateBuffer() {
@@ -501,6 +509,166 @@ public final class DrawUtil implements IWindow {
 
    public static void drawGlow(MatrixStack matrixStack, float x, float y, float width, float height, int glowRadius) {
       Render2DUtil.drawGradientBlurredShadow(matrixStack, x, y, width, height, glowRadius, Gradient.of(Pain.getInstance().getThemeManager().getCurrentTheme().getColor(), Pain.getInstance().getThemeManager().getCurrentTheme().getColor(), Pain.getInstance().getThemeManager().getCurrentTheme().getSecondColor(), Pain.getInstance().getThemeManager().getCurrentTheme().getSecondColor()));
+   }
+
+   private static SimpleFramebuffer motionFbo;
+   private static boolean motionPrimed;
+
+   /** Сбрасывает накопленный кадр размытия (при выключении модуля, смене мира). */
+   public static void resetMotionBlur() {
+      motionPrimed = false;
+   }
+
+   /**
+    * Размытие в движении: поверх свежего кадра накладывается накопленный прошлый кадр с прозрачностью keep (0..1),
+    * результат запоминается для следующего кадра. Чем больше keep, тем длиннее шлейф.
+    */
+   public static void drawMotionBlur(float keep) {
+      Framebuffer main = MinecraftClient.getInstance().getFramebuffer();
+      if (motionFbo == null) {
+         motionFbo = new SimpleFramebuffer(main.textureWidth, main.textureHeight, false);
+         motionPrimed = false;
+      }
+
+      if (motionFbo.textureWidth != main.textureWidth || motionFbo.textureHeight != main.textureHeight) {
+         motionFbo.resize(main.textureWidth, main.textureHeight);
+         motionPrimed = false;
+      }
+
+      if (motionPrimed && keep > 0.01F) {
+         Matrix4f savedProjection = new Matrix4f(RenderSystem.getProjectionMatrix());
+         RenderSystem.setProjectionMatrix(new Matrix4f(), com.mojang.blaze3d.systems.ProjectionType.ORTHOGRAPHIC);
+         RenderSystem.getModelViewStack().pushMatrix();
+         RenderSystem.getModelViewStack().identity();
+         RenderSystem.enableBlend();
+         RenderSystem.defaultBlendFunc();
+         RenderSystem.disableCull();
+         RenderSystem.disableDepthTest();
+         RenderSystem.depthMask(false);
+         RenderSystem.setShader(ShaderProgramKeys.POSITION_TEX_COLOR);
+         RenderSystem.setShaderTexture(0, motionFbo.getColorAttachment());
+         int color = (int)(Math.min(0.97F, keep) * 255.0F) << 24 | 0xFFFFFF;
+         BufferBuilder builder = RenderSystem.renderThreadTesselator().begin(DrawMode.QUADS, VertexFormats.POSITION_TEXTURE_COLOR);
+         builder.vertex(-1.0F, 1.0F, 0.0F).texture(0.0F, 1.0F).color(color);
+         builder.vertex(-1.0F, -1.0F, 0.0F).texture(0.0F, 0.0F).color(color);
+         builder.vertex(1.0F, -1.0F, 0.0F).texture(1.0F, 0.0F).color(color);
+         builder.vertex(1.0F, 1.0F, 0.0F).texture(1.0F, 1.0F).color(color);
+         BufferRenderer.drawWithGlobalProgram(builder.end());
+         RenderSystem.setShaderTexture(0, 0);
+         RenderSystem.getModelViewStack().popMatrix();
+         RenderSystem.setProjectionMatrix(savedProjection, com.mojang.blaze3d.systems.ProjectionType.PERSPECTIVE);
+         RenderSystem.depthMask(true);
+         RenderSystem.enableDepthTest();
+         RenderSystem.enableCull();
+         RenderSystem.disableBlend();
+      }
+
+      // запоминаем получившийся кадр
+      motionFbo.beginWrite(false);
+      main.draw(motionFbo.textureWidth, motionFbo.textureHeight);
+      main.beginWrite(false);
+      motionPrimed = true;
+   }
+
+   /**
+    * Искажение уже нарисованного кадра вокруг точки экрана (ударная волна и/или закручивание).
+    * Центр и размеры — в долях экрана (0..1, радиус — в долях высоты). Вызывать во время рендера мира.
+    */
+   /** Капли дождя на «стекле» камеры: один проход по всему экрану, картинка под каплями преломляется. */
+   public static void drawLensRain(float amount, float time) {
+      Framebuffer main = MinecraftClient.getInstance().getFramebuffer();
+      if (amount <= 0.01F || lensRainProgram == null || lensRainProgram.use() == null) {
+         return;
+      }
+
+      SimpleFramebuffer fbo = (SimpleFramebuffer)TEMP_FBO_SUPPLIER.get();
+      if (fbo.textureWidth != main.textureWidth || fbo.textureHeight != main.textureHeight) {
+         fbo.resize(main.textureWidth, main.textureHeight);
+      }
+
+      fbo.beginWrite(false);
+      main.draw(fbo.textureWidth, fbo.textureHeight);
+      main.beginWrite(false);
+      Matrix4f savedProjection = new Matrix4f(RenderSystem.getProjectionMatrix());
+      RenderSystem.setProjectionMatrix(new Matrix4f(), com.mojang.blaze3d.systems.ProjectionType.ORTHOGRAPHIC);
+      RenderSystem.getModelViewStack().pushMatrix();
+      RenderSystem.getModelViewStack().identity();
+      RenderSystem.disableBlend();
+      RenderSystem.disableCull();
+      RenderSystem.disableDepthTest();
+      RenderSystem.depthMask(false);
+      RenderSystem.setShaderTexture(0, fbo.getColorAttachment());
+      lensRainProgram.use();
+      lensRainProgram.findUniform("Time").set(time);
+      lensRainProgram.findUniform("Amount").set(amount);
+      lensRainProgram.findUniform("Aspect").set((float)main.textureWidth / (float)main.textureHeight);
+      BufferBuilder builder = RenderSystem.renderThreadTesselator().begin(DrawMode.QUADS, VertexFormats.POSITION_COLOR);
+      builder.vertex(-1.0F, 1.0F, 0.0F).color(-1);
+      builder.vertex(-1.0F, -1.0F, 0.0F).color(-1);
+      builder.vertex(1.0F, -1.0F, 0.0F).color(-1);
+      builder.vertex(1.0F, 1.0F, 0.0F).color(-1);
+      BufferRenderer.drawWithGlobalProgram(builder.end());
+      RenderSystem.setShaderTexture(0, 0);
+      RenderSystem.getModelViewStack().popMatrix();
+      RenderSystem.setProjectionMatrix(savedProjection, com.mojang.blaze3d.systems.ProjectionType.PERSPECTIVE);
+      RenderSystem.depthMask(true);
+      RenderSystem.enableDepthTest();
+      RenderSystem.enableCull();
+   }
+
+   public static void drawDistortion(float centerU, float centerV, float radius, float width, float strength, float twist) {
+      Framebuffer main = MinecraftClient.getInstance().getFramebuffer();
+      if (distortProgram == null || distortProgram.use() == null) {
+         return;
+      }
+
+      SimpleFramebuffer fbo = (SimpleFramebuffer)TEMP_FBO_SUPPLIER.get();
+      if (fbo.textureWidth != main.textureWidth || fbo.textureHeight != main.textureHeight) {
+         fbo.resize(main.textureWidth, main.textureHeight);
+      }
+
+      float aspect = (float)main.textureWidth / (float)main.textureHeight;
+      // прямоугольник, которого хватает на всю волну; за его краем искажение уже нулевое
+      float reach = twist != 0.0F ? radius : radius + width * 3.0F;
+      float x0 = Math.max(-1.0F, (centerU - reach / aspect) * 2.0F - 1.0F);
+      float x1 = Math.min(1.0F, (centerU + reach / aspect) * 2.0F - 1.0F);
+      float y0 = Math.max(-1.0F, (centerV - reach) * 2.0F - 1.0F);
+      float y1 = Math.min(1.0F, (centerV + reach) * 2.0F - 1.0F);
+      if (x0 >= x1 || y0 >= y1) {
+         return;
+      }
+
+      fbo.beginWrite(false);
+      main.draw(fbo.textureWidth, fbo.textureHeight);
+      main.beginWrite(false);
+      Matrix4f savedProjection = new Matrix4f(RenderSystem.getProjectionMatrix());
+      RenderSystem.setProjectionMatrix(new Matrix4f(), com.mojang.blaze3d.systems.ProjectionType.ORTHOGRAPHIC);
+      RenderSystem.getModelViewStack().pushMatrix();
+      RenderSystem.getModelViewStack().identity();
+      RenderSystem.disableBlend();
+      RenderSystem.disableCull();
+      RenderSystem.disableDepthTest();
+      RenderSystem.depthMask(false);
+      RenderSystem.setShaderTexture(0, fbo.getColorAttachment());
+      distortProgram.use();
+      distortProgram.findUniform("Center").set(centerU, centerV);
+      distortProgram.findUniform("Aspect").set(aspect);
+      distortProgram.findUniform("Radius").set(radius);
+      distortProgram.findUniform("Width").set(Math.max(1.0E-4F, width));
+      distortProgram.findUniform("Strength").set(strength);
+      distortProgram.findUniform("Twist").set(twist);
+      BufferBuilder builder = RenderSystem.renderThreadTesselator().begin(DrawMode.QUADS, VertexFormats.POSITION_COLOR);
+      builder.vertex(x0, y1, 0.0F).color(-1);
+      builder.vertex(x0, y0, 0.0F).color(-1);
+      builder.vertex(x1, y0, 0.0F).color(-1);
+      builder.vertex(x1, y1, 0.0F).color(-1);
+      BufferRenderer.drawWithGlobalProgram(builder.end());
+      RenderSystem.setShaderTexture(0, 0);
+      RenderSystem.getModelViewStack().popMatrix();
+      RenderSystem.setProjectionMatrix(savedProjection, com.mojang.blaze3d.systems.ProjectionType.PERSPECTIVE);
+      RenderSystem.depthMask(true);
+      RenderSystem.enableDepthTest();
+      RenderSystem.enableCull();
    }
 
    public static void drawBlur(MatrixStack matrices, float x, float y, float width, float height, float blurRadius, BorderRadius borderRadius, ColorRGBA color) {

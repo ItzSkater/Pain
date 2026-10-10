@@ -175,11 +175,11 @@ public class ColorRGBA {
    }
 
    public float getSaturation() {
-      return this.getHSBValues()[2];
+      return this.getHSBValues()[1];
    }
 
    public float getBrightness() {
-      return this.getHSBValues()[1];
+      return this.getHSBValues()[2];
    }
 
    private float[] getHSBValues() {

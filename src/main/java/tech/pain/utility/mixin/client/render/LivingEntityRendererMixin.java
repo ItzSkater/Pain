@@ -31,6 +31,11 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity, S extend
 )
    )
    private RenderLayer renderHook(LivingEntityRenderer instance, LivingEntityRenderState state, boolean showBody, boolean translucent, boolean showOutline) {
+      RenderLayer chams = tech.pain.client.modules.impl.render.Chams.INSTANCE.layerFor(state);
+      if (chams != null && showBody) {
+         return chams;
+      }
+
       if (!translucent && state.width == 0.6F) {
          EventEntityColor event = new EventEntityColor(-1, state);
          EventManager.call(event);
@@ -53,5 +58,21 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity, S extend
       EventEntityColor event = new EventEntityColor(l, renderState);
       EventManager.call(event);
       instance.render(matrixStack, vertexConsumer, i, j, event.getColor());
+   }
+
+   @org.spongepowered.asm.mixin.injection.Inject(
+      method = {"render(Lnet/minecraft/client/render/entity/state/LivingEntityRenderState;Lnet/minecraft/client/util/math/MatrixStack;Lnet/minecraft/client/render/VertexConsumerProvider;I)V"},
+      at = {@At("HEAD")}
+   )
+   private void chamsBegin(LivingEntityRenderState state, MatrixStack matrices, net.minecraft.client.render.VertexConsumerProvider consumers, int light, org.spongepowered.asm.mixin.injection.callback.CallbackInfo ci) {
+      tech.pain.client.modules.impl.render.Chams.INSTANCE.beginThroughWalls(state, consumers);
+   }
+
+   @org.spongepowered.asm.mixin.injection.Inject(
+      method = {"render(Lnet/minecraft/client/render/entity/state/LivingEntityRenderState;Lnet/minecraft/client/util/math/MatrixStack;Lnet/minecraft/client/render/VertexConsumerProvider;I)V"},
+      at = {@At("RETURN")}
+   )
+   private void chamsEnd(LivingEntityRenderState state, MatrixStack matrices, net.minecraft.client.render.VertexConsumerProvider consumers, int light, org.spongepowered.asm.mixin.injection.callback.CallbackInfo ci) {
+      tech.pain.client.modules.impl.render.Chams.INSTANCE.endThroughWalls(consumers);
    }
 }

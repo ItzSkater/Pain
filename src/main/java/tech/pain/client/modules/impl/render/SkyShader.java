@@ -51,7 +51,12 @@ import tech.pain.utility.render.display.base.color.ColorRGBA;
 )
 public final class SkyShader extends Module {
    public static final SkyShader INSTANCE = new SkyShader();
-   private final ModeSetting sky = new ModeSetting("Небо", "Deep Space", "Inside Galaxy", "Black Void", "Свой файл");
+   private final ModeSetting sky = new ModeSetting("Небо", "Атмосфера", "Deep Space", "Inside Galaxy", "Snow Field", "Black Void", "Свой файл");
+   private final NumberSetting cloudiness = new NumberSetting("Облачность", 0.5F, 0.0F, 1.0F, 0.05F, (Supplier<Boolean>)() -> this.sky.is("Атмосфера"));
+   private final ModeSetting cloudQuality = new ModeSetting("Качество облаков", (Supplier<Boolean>)() -> this.sky.is("Атмосфера"), "Среднее", "Низкое", "Высокое");
+   private final BooleanSetting glare = new BooleanSetting("Блик солнца", true, () -> this.sky.is("Атмосфера"));
+   private float glareNow;
+   private long glareFrame;
    private final ModeSetting tint = new ModeSetting("Цвет", "Оригинал", "Тема", "Радуга", "Свой");
    private final ColorSetting custom = new ColorSetting("Свой цвет", new ColorRGBA(150, 110, 255), (Supplier<Boolean>)() -> this.tint.is("Свой"));
    private final NumberSetting brightness = new NumberSetting("Яркость", 1.0F, 0.2F, 1.0F, 0.05F);
@@ -231,14 +236,20 @@ public final class SkyShader extends Module {
 
    /** Вызывается из миксина на месте ванильного неба; матрица вида уже повёрнута как камера. */
    public void drawDome() {
+      if (this.sky.is("Атмосфера") && this.drawAtmosphere()) {
+         return;
+      }
+
       double time = (double)System.currentTimeMillis() / 1000.0;
       float spin = (float)(time * 0.012 * (double)this.rotation.getCurrent() % (Math.PI * 2.0));
-      Matrix4f mat = new Matrix4f().rotateY(spin).rotateX(0.3F);
+      Matrix4f mat = new Matrix4f().rotateY(spin).rotateX(this.sky.is("Snow Field") ? 0.0F : 0.3F); // небо с горизонтом не наклоняем
       Sky sky = null;
       if (this.sky.is("Deep Space")) {
          sky = this.bundled("deep_space");
       } else if (this.sky.is("Inside Galaxy")) {
          sky = this.bundled("inside_galaxy");
+      } else if (this.sky.is("Snow Field")) {
+         sky = this.bundled("snow_field");
       } else if (this.sky.is("Свой файл")) {
          sky = this.customSky();
       }
@@ -296,6 +307,167 @@ public final class SkyShader extends Module {
 
       RenderSystem.depthMask(true);
       RenderSystem.enableCull();
+   }
+
+   /** Блик в объективе: когда солнце в кадре и ничем не закрыто, от него по экрану расходится мягкое зарево и цепочка бликов. */
+   @com.darkmagician6.eventapi.EventTarget
+   public void onRender2D(tech.pain.base.events.impl.render.EventRender2D event) {
+      if (mc.world == null || mc.player == null || !this.sky.is("Атмосфера") || !this.glare.isEnabled() || mc.options.hudHidden) {
+         return;
+      }
+
+      long now = System.currentTimeMillis();
+      float dt = Math.min(0.1F, (float)(now - this.glareFrame) / 1000.0F);
+      this.glareFrame = now;
+      float pt = event.getTickDelta();
+      float angle = mc.world.getSkyAngle(pt) * 6.2831855F;
+      net.minecraft.util.math.Vec3d sun = new net.minecraft.util.math.Vec3d((double)(-MathHelper.sin(angle)), (double)MathHelper.cos(angle), 0.0);
+      net.minecraft.util.math.Vec3d cam = mc.gameRenderer.getCamera().getPos();
+      float sw = (float)mc.getWindow().getScaledWidth();
+      float sh = (float)mc.getWindow().getScaledHeight();
+      net.minecraft.util.math.Vec3d screen = tech.pain.utility.math.ProjectionUtil.worldSpaceToScreenSpace(cam.add(sun.multiply(60.0)));
+      float sx = (float)screen.x;
+      float sy = (float)screen.y;
+      boolean inFrame = screen.z > 0.0 && screen.z < 1.0 && sx > -sw * 0.15F && sx < sw * 1.15F && sy > -sh * 0.15F && sy < sh * 1.15F;
+      float want = 0.0F;
+      if (inFrame && sun.y > -0.04) {
+         // солнце закрыто блоком — блика нет
+         net.minecraft.util.hit.BlockHitResult hit = mc.world.raycast(new net.minecraft.world.RaycastContext(cam, cam.add(sun.multiply(128.0)), net.minecraft.world.RaycastContext.ShapeType.COLLIDER, net.minecraft.world.RaycastContext.FluidHandling.NONE, mc.player));
+         if (hit.getType() == net.minecraft.util.hit.HitResult.Type.MISS) {
+            want = (1.0F - mc.world.getRainGradient(pt)) * smooth(-0.04F, 0.06F, (float)sun.y);
+         }
+      }
+
+      this.glareNow += (want - this.glareNow) * Math.min(1.0F, dt * 7.0F);
+      if (this.glareNow < 0.01F) {
+         return;
+      }
+
+      float high = smooth(0.0F, 0.45F, (float)sun.y);
+      int tint = tech.pain.utility.render.level.ParticleShapes.argb(255, (int)(128.0F + 117.0F * high), (int)(51.0F + 173.0F * high), 0.0F) & 0xFFFFFF;
+      float k = this.glareNow * this.brightness.getCurrent();
+      Matrix4f mat = event.getContext().getMatrices().peek().getPositionMatrix();
+      RenderSystem.enableBlend();
+      RenderSystem.blendFuncSeparate(770, 1, 0, 1);
+      RenderSystem.disableCull();
+      RenderSystem.disableDepthTest();
+      RenderSystem.setShader(ShaderProgramKeys.POSITION_COLOR);
+      BufferBuilder bb = Tessellator.getInstance().begin(DrawMode.TRIANGLES, VertexFormats.POSITION_COLOR);
+      glow(bb, mat, sx, sy, sh * 0.8F, tint, 0.11F * k);
+      glow(bb, mat, sx, sy, sh * 0.3F, tint, 0.24F * k);
+      glow(bb, mat, sx, sy, sh * 0.07F, 0xFFFFFF, 0.55F * k);
+      // блики лежат на прямой от солнца через центр экрана
+      float cx = sw * 0.5F;
+      float cy = sh * 0.5F;
+      float[] along = new float[]{0.45F, 0.8F, 1.25F, 1.6F, 2.05F};
+      float[] size = new float[]{0.035F, 0.02F, 0.055F, 0.028F, 0.09F};
+      int[] hue = new int[]{0xFFB070, 0x80C8FF, 0xFFD890, 0xB0FFC8, 0xFF9080};
+
+      for (int i = 0; i < along.length; ++i) {
+         glow(bb, mat, sx + (cx - sx) * along[i], sy + (cy - sy) * along[i], sh * size[i], hue[i], 0.11F * k);
+      }
+
+      net.minecraft.client.render.BuiltBuffer built = bb.endNullable();
+      if (built != null) {
+         BufferRenderer.drawWithGlobalProgram(built);
+      }
+
+      RenderSystem.enableCull();
+      RenderSystem.enableDepthTest();
+      RenderSystem.defaultBlendFunc();
+      RenderSystem.disableBlend();
+   }
+
+   /** Мягкое пятно: яркий центр, край уходит в ноль. */
+   private static void glow(BufferBuilder bb, Matrix4f mat, float x, float y, float radius, int rgb, float alpha) {
+      int centre = tech.pain.utility.render.level.ParticleShapes.withAlpha(rgb, Math.min(1.0F, alpha));
+      int edge = tech.pain.utility.render.level.ParticleShapes.withAlpha(rgb, 0.0F);
+      int segments = 40;
+
+      for (int i = 0; i < segments; ++i) {
+         float a0 = (float)i / (float)segments * 6.2831855F;
+         float a1 = (float)(i + 1) / (float)segments * 6.2831855F;
+         bb.vertex(mat, x, y, 0.0F).color(centre);
+         bb.vertex(mat, x + MathHelper.cos(a0) * radius, y + MathHelper.sin(a0) * radius, 0.0F).color(edge);
+         bb.vertex(mat, x + MathHelper.cos(a1) * radius, y + MathHelper.sin(a1) * radius, 0.0F).color(edge);
+      }
+   }
+
+   /** Цвет горизонта «Атмосферы» — тем же расчётом, что в шейдере; им красится туман, чтобы даль сливалась с небом. */
+   public float[] horizonColor(float pt) {
+      float sunH = MathHelper.cos(mc.world.getSkyAngle(pt) * 6.2831855F);
+      float day = smooth(-0.18F, 0.22F, sunH);
+      float dusk = (1.0F - smooth(0.0F, 0.42F, Math.abs(sunH))) * smooth(-0.3F, 0.0F, sunH);
+      float rain = mc.world.getRainGradient(pt) * 0.85F;
+      float[] night = new float[]{0.035F, 0.045F, 0.085F};
+      float[] noon = new float[]{0.62F, 0.78F, 0.96F};
+      float[] warm = new float[]{0.97F, 0.44F, 0.38F};
+      float[] out = new float[3];
+
+      for (int i = 0; i < 3; ++i) {
+         float c = night[i] + (noon[i] - night[i]) * day;
+         c += (warm[i] - c) * dusk * 0.45F;
+         float grey = (i == 0 ? 0.03F : i == 1 ? 0.035F : 0.045F) + ((i == 0 ? 0.50F : i == 1 ? 0.54F : 0.60F) - (i == 0 ? 0.03F : i == 1 ? 0.035F : 0.045F)) * day;
+         out[i] = c + (grey - c) * rain;
+      }
+
+      return out;
+   }
+
+   private static float smooth(float a, float b, float x) {
+      float t = MathHelper.clamp((x - a) / (b - a), 0.0F, 1.0F);
+      return t * t * (3.0F - 2.0F * t);
+   }
+
+   /** В «Атмосфере» облака рисует шейдер, ванильные плоские убирает CloudRendererMixin. */
+   public boolean ownClouds() {
+      return this.isEnabled() && this.sky.is("Атмосфера");
+   }
+
+   /** Небо, которое целиком считает шейдер sky: солнце, луна, звёзды, облака, пасмурность в дождь. */
+   private boolean drawAtmosphere() {
+      tech.pain.utility.render.display.shader.GlProgram program = tech.pain.utility.render.display.shader.DrawUtil.skyProgram;
+      if (mc.world == null || program == null || program.use() == null) {
+         return false;
+      }
+
+      float pt = mc.getRenderTickCounter().getTickDelta(false);
+      // солнце в игре ходит по кругу в плоскости восток-запад
+      float angle = mc.world.getSkyAngle(pt) * 6.2831855F;
+      float rain = mc.world.getRainGradient(pt);
+      float flash = mc.world.getLightningTicksLeft() > 0 ? 0.35F : 0.0F;
+      RenderSystem.depthMask(false);
+      RenderSystem.disableCull();
+      RenderSystem.disableBlend();
+      RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
+      program.use();
+      program.findUniform("SunDir").set(-MathHelper.sin(angle), MathHelper.cos(angle), 0.0F);
+      program.findUniform("Time").set((float)(System.currentTimeMillis() % 3600000L) / 1000.0F * (0.3F + this.rotation.getCurrent()));
+      program.findUniform("Rain").set(rain);
+      program.findUniform("Clouds").set(this.cloudiness.getCurrent());
+      program.findUniform("Steps").set(this.cloudQuality.is("Низкое") ? 10.0F : this.cloudQuality.is("Высокое") ? 26.0F : 16.0F);
+      float bolt = WeatherControl.INSTANCE.boltFlash();
+      program.findUniform("Flash").set(Math.max(flash, bolt * 0.22F));
+      program.findUniform("Bolt").set(WeatherControl.INSTANCE.boltAzimuth(), WeatherControl.INSTANCE.boltSeed(), bolt);
+      BufferBuilder bb = Tessellator.getInstance().begin(DrawMode.QUADS, VertexFormats.POSITION_COLOR);
+      // куб вокруг камеры: шейдеру нужно только направление взгляда
+      float r = 100.0F;
+      float[][] faces = new float[][]{
+         {-r, r, -r, r, r, -r, r, r, r, -r, r, r}, {-r, -r, -r, -r, -r, r, r, -r, r, r, -r, -r},
+         {-r, -r, -r, r, -r, -r, r, r, -r, -r, r, -r}, {-r, -r, r, -r, r, r, r, r, r, r, -r, r},
+         {-r, -r, -r, -r, r, -r, -r, r, r, -r, -r, r}, {r, -r, -r, r, -r, r, r, r, r, r, r, -r}
+      };
+
+      for (float[] f : faces) {
+         for (int i = 0; i < 4; ++i) {
+            bb.vertex(f[i * 3], f[i * 3 + 1], f[i * 3 + 2]).color(-1);
+         }
+      }
+
+      BufferRenderer.drawWithGlobalProgram(bb.end());
+      RenderSystem.depthMask(true);
+      RenderSystem.enableCull();
+      return true;
    }
 
    /** Свои звёзды для «пустоты»: маленькие квадратики на сфере, каждая мерцает в своём ритме. */

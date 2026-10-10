@@ -144,4 +144,14 @@ public abstract class HeldItemRendererMixin {
 
       vertexConsumers.draw();
    }
+
+   @Inject(method = {"renderFirstPersonItem"}, at = {@At("HEAD")})
+   private void fireChamsBegin(AbstractClientPlayerEntity player, float tickDelta, float pitch, Hand hand, float swingProgress, ItemStack item, float equipProgress, MatrixStack matrices, VertexConsumerProvider vertexConsumers, int light, CallbackInfo ci) {
+      tech.pain.client.modules.impl.render.FireChams.setCurrent(item, hand == Hand.MAIN_HAND);
+   }
+
+   @Inject(method = {"renderFirstPersonItem"}, at = {@At("RETURN")})
+   private void fireChamsEnd(AbstractClientPlayerEntity player, float tickDelta, float pitch, Hand hand, float swingProgress, ItemStack item, float equipProgress, MatrixStack matrices, VertexConsumerProvider vertexConsumers, int light, CallbackInfo ci) {
+      tech.pain.client.modules.impl.render.FireChams.setCurrent(null, true);
+   }
 }

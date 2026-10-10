@@ -39,6 +39,8 @@ public class CommandManager {
       this.registerCommand(new BaritoneCommand());
       this.registerCommand(new SwarmCommand());
       this.registerCommand(new NeuroCommand());
+      this.registerCommand(new tech.pain.base.comand.impl.ChatLyricsCommand());
+      this.registerCommand(new tech.pain.base.comand.impl.WardenCommand());
    }
 
    public void registerCommand(CommandAbstract command) {

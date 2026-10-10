@@ -183,8 +183,8 @@ public final class LyricsService {
    private static boolean ensureEnvironment(long session, String engine) throws Exception {
       Path venv = DIR.resolve("venv");
       Path py = venv.resolve("bin").resolve("python");
-      String module = engine.equals("vosk") ? "vosk" : "faster_whisper";
-      String[] packages = engine.equals("vosk") ? new String[]{"vosk", "numpy"} : new String[]{"faster-whisper", "numpy"};
+      String module = engine.equals("vosk") ? "vosk" : engine.equals("whispercpp") ? "numpy" : "faster_whisper";
+      String[] packages = engine.equals("vosk") ? new String[]{"vosk", "numpy"} : engine.equals("whispercpp") ? new String[]{"numpy"} : new String[]{"faster-whisper", "numpy"};
       if (!Files.isExecutable(py)) {
          setStatus("создаю окружение python");
          if (exec(List.of("python3", "-m", "venv", venv.toString())) != 0) {

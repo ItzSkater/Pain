@@ -7,7 +7,7 @@ and prints one JSON object per line to stdout:
   {"status": "..."}                   progress / info
   {"error": "..."}                    fatal problem (process exits afterwards)
 
-Engines: faster-whisper (better on music) or vosk (lighter). Nothing is stored.
+Engines: faster-whisper, whisper.cpp (large-v3-turbo on the GPU via Vulkan) or vosk (lighter). Nothing is stored.
 """
 import argparse
 import json
@@ -315,9 +315,190 @@ def run_whisper(args, cap):
             emit(text=text, final=True)
 
 
+CPP_DIR = os.path.join(BASE, "whispercpp")
+CPP_MODELS = {"large-v3-turbo": 1624555275}
+JUNK = ("субтитр", "продолжение следует", "подписывайтесь", "thank you for watching",
+        "thanks for watching", "amara.org", "dimatorzok", "редактор субтитров", "спасибо за просмотр")
+
+
+def ensure_cpp_model(name):
+    """ggml-модель для whisper.cpp; докачивает с места обрыва (curl -C -)."""
+    path = os.path.join(CPP_DIR, "models", "ggml-%s.bin" % name)
+    size = CPP_MODELS.get(name, 0)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    url = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-%s.bin" % name
+    for attempt in range(40):
+        have = os.path.getsize(path) if os.path.isfile(path) else 0
+        if have and (not size or have >= size):
+            return path
+        emit(status="downloading whisper.cpp %s %d%%" % (name, int(100.0 * have / size) if size else 0))
+        subprocess.call(["curl", "-L", "-C", "-", "-s", "--retry", "5", "--retry-all-errors", "-o", path, url])
+        time.sleep(2)
+    raise RuntimeError("could not download ggml-%s.bin (internet?)" % name)
+
+
+def die_with_parent():
+    """Сервер умирает вместе с хелпером, даже если того убили через kill -9."""
+    try:
+        import ctypes
+        import signal
+        ctypes.CDLL("libc.so.6").prctl(1, signal.SIGKILL)  # PR_SET_PDEATHSIG
+    except Exception:
+        pass
+
+
+def wav_bytes(pcm):
+    import struct
+    return (b"RIFF" + struct.pack("<I", 36 + len(pcm)) + b"WAVEfmt " +
+            struct.pack("<IHHIIHH", 16, 1, 1, RATE, RATE * 2, 2, 16) +
+            b"data" + struct.pack("<I", len(pcm)) + pcm)
+
+
+def cpp_request(port, pcm, lang, prompt):
+    boundary = "painlyrics%d" % int(time.time() * 1000)
+    fields = {"response_format": "verbose_json", "temperature": "0.0", "language": lang or "auto"}
+    if prompt:
+        fields["prompt"] = prompt
+    body = bytearray()
+    for k, v in fields.items():
+        body += ("--%s\r\nContent-Disposition: form-data; name=\"%s\"\r\n\r\n%s\r\n" % (boundary, k, v)).encode("utf-8")
+    body += ("--%s\r\nContent-Disposition: form-data; name=\"file\"; filename=\"a.wav\"\r\n"
+             "Content-Type: audio/wav\r\n\r\n" % boundary).encode()
+    body += wav_bytes(pcm) + ("\r\n--%s--\r\n" % boundary).encode()
+    req = urllib.request.Request("http://127.0.0.1:%d/inference" % port, data=bytes(body),
+                                 headers={"Content-Type": "multipart/form-data; boundary=" + boundary})
+    with urllib.request.urlopen(req, timeout=60) as r:
+        return json.loads(r.read().decode("utf-8", "replace"))
+
+
+def run_whispercpp(args, cap):
+    import socket
+    server = os.path.join(CPP_DIR, "build", "bin", "whisper-server")
+    if not os.access(server, os.X_OK):
+        emit(error="whisper.cpp не собран: нет %s" % server)
+        sys.exit(1)
+    name = args.model if args.model in CPP_MODELS else "large-v3-turbo"
+    model = ensure_cpp_model(name)
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    emit(status="loading whisper.cpp %s" % name)
+    log = open(os.path.join(BASE, "whispercpp.log"), "ab")
+    srv = subprocess.Popen([server, "-m", model, "--host", "127.0.0.1", "--port", str(port), "-l", "auto",
+                            "-t", "4", "-bs", "2", "-sns", "-nt"], stdout=log, stderr=log, cwd=CPP_DIR,
+                           preexec_fn=die_with_parent)
+    import atexit
+    atexit.register(srv.kill)
+    for _ in range(600):
+        if srv.poll() is not None:
+            emit(error="whisper-server упал при старте, лог: ~/.config/pain/lyrics/whispercpp.log")
+            sys.exit(1)
+        try:
+            socket.create_connection(("127.0.0.1", port), timeout=0.3).close()
+            break
+        except OSError:
+            time.sleep(0.2)
+    emit(status="ready whisper.cpp %s" % name)
+
+    window = max(3.0, min(10.0, args.window))
+    need = int(RATE * window) * 2
+    buf = bytearray()
+    lock = threading.Lock()
+    stop = threading.Event()
+
+    def reader():
+        while not stop.is_set():
+            chunk = cap.stdout.read(RATE // 10 * 2)
+            if not chunk:
+                stop.set()
+                break
+            with lock:
+                buf.extend(chunk)
+                if len(buf) > need * 2:
+                    del buf[: len(buf) - need * 2]
+
+    threading.Thread(target=reader, daemon=True).start()
+    lang = None if args.lang == "auto" else args.lang
+    votes = {}
+    prev = ""
+    empty = 0
+    try:
+        while not stop.is_set():
+            if RESET.is_set() or PAUSED.is_set():
+                with lock:
+                    buf.clear()
+                if RESET.is_set():
+                    RESET.clear()
+                    prev = ""
+                    empty = 0
+                    if args.lang == "auto":
+                        lang = None
+                        votes.clear()
+                if PAUSED.is_set():
+                    time.sleep(0.1)
+                    continue
+            with lock:
+                ready = len(buf) >= need
+                if ready:
+                    chunk = bytes(buf[:need])
+                    del buf[: need - RATE * 2]
+            if not ready:
+                time.sleep(0.05)
+                continue
+            if rms(chunk) < args.silence:
+                continue
+            if srv.poll() is not None:
+                emit(error="whisper-server завершился, лог: ~/.config/pain/lyrics/whispercpp.log")
+                return
+            try:
+                res = cpp_request(port, chunk, lang, prev[-120:])
+            except Exception as e:
+                emit(debug="whisper.cpp request failed: %s" % e)
+                time.sleep(0.5)
+                continue
+            parts = []
+            for seg in res.get("segments") or []:
+                if seg.get("no_speech_prob", 0.0) > 0.6 or seg.get("avg_logprob", 0.0) < -1.1:
+                    continue
+                t = (seg.get("text") or "").strip()
+                if t and not t.startswith(("[", "(", "*")) and not any(j in t.lower() for j in JUNK):
+                    parts.append(t)
+            if not res.get("segments"):
+                t = (res.get("text") or "").strip()
+                if t and not any(j in t.lower() for j in JUNK):
+                    parts.append(t)
+            text = " ".join(parts).strip()
+            found = res.get("detected_language") or res.get("language")
+            if lang is None and text and found:
+                found = LANG_CODES.get(found, found)
+                votes[found] = votes.get(found, 0) + 1
+                best = max(votes, key=votes.get)
+                if votes[best] >= 3 and len(best) == 2:
+                    lang = best
+                    emit(status="ready whisper.cpp %s lang %s" % (name, lang))
+            if not text:
+                empty += 1
+                if args.lang == "auto" and lang is not None and empty >= 4:
+                    emit(debug="language %s unlocked (no words)" % lang)
+                    lang = None
+                    votes.clear()
+                    empty = 0
+            else:
+                empty = 0
+            if text and text != prev:
+                prev = text
+                emit(text=text, final=True)
+    finally:
+        srv.kill()
+
+
+LANG_CODES = {"russian": "ru", "english": "en", "german": "de", "spanish": "es", "french": "fr",
+              "ukrainian": "uk", "italian": "it", "portuguese": "pt", "japanese": "ja", "korean": "ko"}
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--engine", default="whisper", choices=["whisper", "vosk"])
+    ap.add_argument("--engine", default="whisper", choices=["whisper", "vosk", "whispercpp"])
     ap.add_argument("--lang", default="auto")
     ap.add_argument("--model", default="base")
     ap.add_argument("--window", type=float, default=5.0)
@@ -328,6 +509,8 @@ def main():
     try:
         if args.engine == "vosk":
             run_vosk(args, cap)
+        elif args.engine == "whispercpp":
+            run_whispercpp(args, cap)
         else:
             run_whisper(args, cap)
     except KeyboardInterrupt:

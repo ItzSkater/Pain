@@ -43,6 +43,10 @@ public class BackGroundRendererMixin {
       if (event.isCancelled()) {
          int color = event.getColor();
          cir.setReturnValue(new Vector4f(ColorUtil.redf(color), ColorUtil.greenf(color), ColorUtil.bluef(color), ColorUtil.alphaf(color)));
+      } else if (tech.pain.client.modules.impl.render.SkyShader.INSTANCE.ownClouds() && camera.getSubmersionType() == net.minecraft.block.enums.CameraSubmersionType.NONE && world.getDimension().hasSkyLight()) {
+         // под небом «Атмосфера» туман берёт цвет его горизонта, иначе даль и небо расходятся в оттенке
+         float[] c = tech.pain.client.modules.impl.render.SkyShader.INSTANCE.horizonColor(tickDelta);
+         cir.setReturnValue(new Vector4f(c[0], c[1], c[2], 1.0F));
       }
 
    }
@@ -58,6 +62,15 @@ public class BackGroundRendererMixin {
       if (event.isCancelled()) {
          int color1 = event.getColor();
          cir.setReturnValue(new Fog(2.0F, event.getDistance(), FogShape.CYLINDER, ColorUtil.redf(color1), ColorUtil.greenf(color1), ColorUtil.bluef(color1), ColorUtil.alphaf(color1)));
+      } else {
+         // дымка дождя и снега из модуля Weather: даль тонет в сером
+         float mist = tech.pain.client.modules.impl.render.WeatherControl.INSTANCE.mistAmount();
+         if (mist > 0.01F && fogType == FogType.FOG_TERRAIN && camera.getSubmersionType() == net.minecraft.block.enums.CameraSubmersionType.NONE) {
+            float end = viewDistance + (Math.min(viewDistance, 72.0F) - viewDistance) * mist;
+            float grey = 0.3F * color.x + 0.59F * color.y + 0.11F * color.z;
+            float k = mist * 0.7F;
+            cir.setReturnValue(new Fog(end * (1.0F - 0.92F * mist), end, FogShape.CYLINDER, color.x + (grey * 0.95F - color.x) * k, color.y + (grey - color.y) * k, color.z + (grey * 1.06F - color.z) * k, color.w));
+         }
       }
 
    }

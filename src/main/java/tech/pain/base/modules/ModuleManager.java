@@ -114,6 +114,10 @@ public final class ModuleManager implements IMinecraft {
       registerModule(Aura.INSTANCE);
       registerModule(AutoSwap.INSTANCE);
       registerModule(AutoTotem.INSTANCE);
+      registerModule(tech.pain.client.modules.impl.combat.Criticals.INSTANCE);
+      registerModule(tech.pain.client.modules.impl.combat.AttributeSwap.INSTANCE);
+      registerModule(tech.pain.client.modules.impl.combat.BowAimbot.INSTANCE);
+      registerAlpha("tech.pain.client.modules.impl.combat.ElytraTarget");
       registerModule(ClickPearl.INSTANCE);
       registerModule(CrystalAura.INSTANCE);
       registerModule(AnchorAura.INSTANCE);
@@ -123,6 +127,7 @@ public final class ModuleManager implements IMinecraft {
 
    private void registerMovement() {
       registerModule(AutoSprint.INSTANCE);
+      registerAlpha("tech.pain.client.modules.impl.movement.Scaffold");
       registerModule(ElytraBooster.INSTANCE);
       registerModule(ElytraRecast.INSTANCE);
       registerModule(GuiWalk.INSTANCE);
@@ -147,7 +152,15 @@ public final class ModuleManager implements IMinecraft {
       registerModule(WorldTime.INSTANCE);
       registerModule(EntityESP.INSTANCE);
       registerModule(TargetESP.INSTANCE);
+      registerModule(tech.pain.client.modules.impl.render.Shaders.INSTANCE);
       registerModule(tech.pain.client.modules.impl.render.Chams.INSTANCE);
+      registerModule(tech.pain.client.modules.impl.render.WeatherControl.INSTANCE);
+      registerModule(tech.pain.client.modules.impl.render.HitFlash.INSTANCE);
+      registerModule(tech.pain.client.modules.impl.render.ChinaHat.INSTANCE);
+      registerModule(tech.pain.client.modules.impl.render.Halo.INSTANCE);
+      registerModule(tech.pain.client.modules.impl.render.BlockHighlight.INSTANCE);
+      registerModule(tech.pain.client.modules.impl.render.HitMarker.INSTANCE);
+      registerModule(tech.pain.client.modules.impl.render.Vignette.INSTANCE);
       registerModule(tech.pain.client.modules.impl.render.KillEffect.INSTANCE);
       registerModule(tech.pain.client.modules.impl.render.Trails.INSTANCE);
       registerModule(tech.pain.client.modules.impl.render.Nametags.INSTANCE);
@@ -159,6 +172,8 @@ public final class ModuleManager implements IMinecraft {
    private void registerPlayer() {
       registerModule(AutoTool.INSTANCE);
       registerModule(AutoArmor.INSTANCE);
+      registerAlpha("tech.pain.client.modules.impl.player.ChestSorter");
+      registerAlpha("tech.pain.client.modules.impl.player.BaseFinder");
       registerModule(Blink.INSTANCE);
       registerModule(NoDelay.INSTANCE);
       registerModule(FastBreak.INSTANCE);
@@ -175,13 +190,35 @@ public final class ModuleManager implements IMinecraft {
       registerModule(FlickBot.INSTANCE);
       registerModule(Panic.INSTANCE);
       registerModule(AutoEZ.INSTANCE);
-      registerModule(tech.pain.client.modules.impl.misc.MusicLyrics.INSTANCE);
+      if (tech.pain.Edition.ALPHA) {
+         registerModule(tech.pain.client.modules.impl.misc.MusicLyrics.INSTANCE);
+      }
+      if (tech.pain.Edition.ALPHA) {
+         registerModule(tech.pain.client.modules.impl.misc.ChatLyrics.INSTANCE);
+      }
+      registerModule(tech.pain.client.modules.impl.misc.Spammer.INSTANCE);
+      registerModule(tech.pain.client.modules.impl.player.AutoWarden.INSTANCE);
       registerModule(tech.pain.client.modules.impl.render.Weather.INSTANCE);
+      registerAlpha("tech.pain.client.modules.impl.render.HitEffect");
+      registerAlpha("tech.pain.client.modules.impl.render.Thunder");
+      if (tech.pain.Edition.ALPHA) {
+         registerModule(tech.pain.client.modules.impl.render.FireChams.INSTANCE);
+      }
+      registerAlpha("tech.pain.client.modules.impl.render.MotionBlur");
+      registerAlpha("tech.pain.client.modules.impl.render.JumpEffect");
+      registerAlpha("tech.pain.client.modules.impl.render.BlockESP");
+      registerAlpha("tech.pain.client.modules.impl.render.StorageESP");
+      registerAlpha("tech.pain.client.modules.impl.render.Minimap");
       registerModule(tech.pain.client.modules.impl.render.Menu3D.INSTANCE);
       registerModule(tech.pain.client.modules.impl.render.Browser3D.INSTANCE);
-      registerModule(tech.pain.client.modules.impl.render.Pet.INSTANCE);
-      registerModule(tech.pain.client.modules.impl.render.ClawdSkin.INSTANCE);
+      if (tech.pain.Edition.ALPHA) {
+         registerModule(tech.pain.client.modules.impl.render.Pet.INSTANCE);
+      }
+      if (tech.pain.Edition.ALPHA) {
+         registerModule(tech.pain.client.modules.impl.render.ClawdSkin.INSTANCE);
+      }
       registerModule(tech.pain.client.modules.impl.render.SkyShader.INSTANCE);
+      registerModule(tech.pain.client.modules.impl.render.CoolInterface.INSTANCE);
       registerModule(AHHelper.INSTANCE);
       registerModule(NoInteract.INSTANCE);
       registerModule(AutoAccept.INSTANCE);
@@ -189,6 +226,23 @@ public final class ModuleManager implements IMinecraft {
       registerModule(NameProtect.INSTANCE);
       registerModule(ScoreboardHealth.INSTANCE);
       registerModule(ElytraAccelerate.INSTANCE);
+   }
+
+   /**
+    * Модуль версии Alpha. В сборке Free этих классов нет вовсе, поэтому обращаемся к ним по имени:
+    * нет класса — модуль просто не появляется.
+    */
+   private void registerAlpha(String className) {
+      if (!tech.pain.Edition.ALPHA) {
+         return;
+      }
+
+      try {
+         Object instance = Class.forName(className).getField("INSTANCE").get(null);
+         this.registerModule((Module)instance);
+      } catch (ReflectiveOperationException | LinkageError e) {
+         System.err.println("[Pain] модуль Alpha не загружен: " + className + " (" + e + ")");
+      }
    }
 
    private void registerModule(Module module) {

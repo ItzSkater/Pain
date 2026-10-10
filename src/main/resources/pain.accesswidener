@@ -68,3 +68,6 @@ accessible	field	net/minecraft/client/render/item/HeldItemRenderer	equipProgress
 accessible	method	net/minecraft/entity/Entity	adjustMovementForCollisions	(Lnet/minecraft/util/math/Vec3d;Lnet/minecraft/util/math/Box;Ljava/util/List;)Lnet/minecraft/util/math/Vec3d;
 accessible	method	net/minecraft/entity/Entity	adjustMovementForCollisions	(Lnet/minecraft/util/math/Vec3d;)Lnet/minecraft/util/math/Vec3d;
 accessible	method	net/minecraft/client/network/ClientPlayerInteractionManager	sendSequencedPacket	(Lnet/minecraft/client/world/ClientWorld;Lnet/minecraft/client/network/SequencedPacketCreator;)V
+accessible	field	net/minecraft/client/MinecraftClient	session	Lnet/minecraft/client/session/Session;
+mutable	field	net/minecraft/client/MinecraftClient	session	Lnet/minecraft/client/session/Session;
+accessible	method	net/minecraft/client/render/item/ItemRenderer	renderBakedItemModel	(Lnet/minecraft/client/render/model/BakedModel;[IIILnet/minecraft/client/util/math/MatrixStack;Lnet/minecraft/client/render/VertexConsumer;)V

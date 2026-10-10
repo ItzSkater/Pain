@@ -13,11 +13,14 @@
     "minecraft.entity.LivingEntityMixin",
     "minecraft.entity.PlayerEntityMixin",
     "minecraft.network.ClientConnectionMixin",
+    "minecraft.network.GameOptionsLocaleMixin",
     "minecraft.team.TeamMixin",
     "minecraft.text.TextVisitFactoryMixin"
   ],
   "client": [
     "accessors.CameraAccessor",
+    "minecraft.world.BiomeWeatherMixin",
+    "minecraft.world.WeatherRenderingMixin",
     "accessors.DrawContextAccessor",
     "accessors.HandledScreenAccessor",
     "accessors.InGameHudAccessor",
@@ -35,8 +38,14 @@
     "client.MinecraftClientMixin",
     "client.MouseMixin",
     "client.render.LivingEntityRendererMixin",
+    "client.render.FireChamsItemRendererMixin",
     "client.render.ScreenMixin",
     "client.render.WindowMixin",
+    "client.render.gui.ClickableWidgetAccessor",
+    "client.render.gui.EntryListWidgetMixin",
+    "client.render.gui.PressableWidgetMixin",
+    "client.render.gui.ScreenBackgroundMixin",
+    "client.render.gui.SliderWidgetMixin",
     "client.render.gui.hud.GameOverlayRendererMixin",
     "client.render.gui.hud.InGameHudMixin",
     "client.render.gui.screen.ChatScreenMixin",
@@ -47,7 +56,8 @@
     "minecraft.render.FeatureRendererMixin",
     "minecraft.render.MixinGameRenderer",
     "minecraft.render.PlayerEntityRendererMixin",
-    "minecraft.render.SkyRenderingMixin"
+    "minecraft.render.SkyRenderingMixin",
+    "minecraft.render.CloudRendererMixin"
   ],
   "injectors": {
     "defaultRequire": 1

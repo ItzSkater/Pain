@@ -60,6 +60,11 @@ public final class Aura extends Module {
    public static final Aura INSTANCE = new Aura();
    private final MultiBooleanSetting targetTypeSetting = MultiBooleanSetting.create("Атаковать", List.of("Игроков", "Мобов", "Животных"));
    public final ModeSetting rotationMode = new ModeSetting("Ротация", new String[0]);
+   public final ModeSetting attackSpeed = new ModeSetting("Скорость атаки", "Перезарядка", "Быстрая перезарядка", "CPS", "По урону", "Без задержки");
+   private final NumberSetting minCps = new NumberSetting("Мин. CPS", 8.0F, 1.0F, 20.0F, 0.5F, (java.util.function.Supplier<Boolean>)() -> this.attackSpeed.is("CPS"));
+   private final NumberSetting maxCps = new NumberSetting("Макс. CPS", 12.0F, 1.0F, 20.0F, 0.5F, (java.util.function.Supplier<Boolean>)() -> this.attackSpeed.is("CPS"));
+   private long lastCpsAttack;
+   private long cpsDelay;
    private final ModeSetting.Value hvh;
    private final ModeSetting.Value lonyJir;
    private final ModeSetting.Value cake;
@@ -69,6 +74,47 @@ public final class Aura extends Module {
    private final ModeSetting.Value spookyTime;
    private final ModeSetting.Value none;
    private final ModeSetting.Value neuro;
+   private final ModeSetting.Value custom;
+   // --- Ротация «Custom»: всё настраивается ---
+   private final ModeSetting cPoint = new ModeSetting("Точка прицела", () -> this.customOn(), "Ближайшая", "Центр", "Голова", "Грудь", "Ноги", "Случайная");
+   private final NumberSetting cSpread = new NumberSetting("Разброс точки (блоки)", 0.05F, 0.0F, 0.5F, 0.01F, (java.util.function.Supplier<Boolean>)() -> this.customOn());
+   private final NumberSetting cPointTicks = new NumberSetting("Смена точки (тики)", 12.0F, 2.0F, 60.0F, 1.0F, (java.util.function.Supplier<Boolean>)() -> this.customOn());
+   private final NumberSetting cPredict = new NumberSetting("Упреждение цели (тики)", 0.0F, 0.0F, 6.0F, 0.5F, (java.util.function.Supplier<Boolean>)() -> this.customOn());
+   private final NumberSetting cYawMin = new NumberSetting("Скорость по горизонтали от (°)", 25.0F, 1.0F, 180.0F, 1.0F, (java.util.function.Supplier<Boolean>)() -> this.customOn());
+   private final NumberSetting cYawMax = new NumberSetting("Скорость по горизонтали до (°)", 45.0F, 1.0F, 180.0F, 1.0F, (java.util.function.Supplier<Boolean>)() -> this.customOn());
+   private final NumberSetting cPitchMin = new NumberSetting("Скорость по вертикали от (°)", 12.0F, 1.0F, 180.0F, 1.0F, (java.util.function.Supplier<Boolean>)() -> this.customOn());
+   private final NumberSetting cPitchMax = new NumberSetting("Скорость по вертикали до (°)", 25.0F, 1.0F, 180.0F, 1.0F, (java.util.function.Supplier<Boolean>)() -> this.customOn());
+   private final ModeSetting cInterp = new ModeSetting("Интерполяция поворота", () -> this.customOn(), "Кубическая", "Синусоидная", "Линейная", "Экспоненциальная");
+   private final NumberSetting cExp = new NumberSetting("Доля поворота за тик", 0.45F, 0.05F, 1.0F, 0.05F, (java.util.function.Supplier<Boolean>)() -> this.customOn() && this.cInterp.is("Экспоненциальная"));
+   private final NumberSetting cAccel = new NumberSetting("Разгон поворота (тики)", 4.0F, 0.0F, 20.0F, 1.0F, (java.util.function.Supplier<Boolean>)() -> this.customOn() && !this.cInterp.is("Экспоненциальная"));
+   private final NumberSetting cSlowZone = new NumberSetting("Замедление у цели (°)", 8.0F, 0.0F, 45.0F, 1.0F, (java.util.function.Supplier<Boolean>)() -> this.customOn());
+   private final NumberSetting cSlowFactor = new NumberSetting("Сила замедления", 0.4F, 0.1F, 1.0F, 0.05F, (java.util.function.Supplier<Boolean>)() -> this.customOn() && this.cSlowZone.getCurrent() > 0.0F);
+   private final NumberSetting cFarBoost = new NumberSetting("Ускорение при большом угле (x)", 1.0F, 1.0F, 3.0F, 0.05F, (java.util.function.Supplier<Boolean>)() -> this.customOn());
+   private final NumberSetting cJitterYaw = new NumberSetting("Дрожание по горизонтали (°)", 0.6F, 0.0F, 5.0F, 0.1F, (java.util.function.Supplier<Boolean>)() -> this.customOn());
+   private final NumberSetting cJitterPitch = new NumberSetting("Дрожание по вертикали (°)", 0.4F, 0.0F, 5.0F, 0.1F, (java.util.function.Supplier<Boolean>)() -> this.customOn());
+   private final NumberSetting cJitterSpeed = new NumberSetting("Скорость дрожания", 1.0F, 0.2F, 4.0F, 0.1F, (java.util.function.Supplier<Boolean>)() -> this.customOn());
+   private final NumberSetting cOvershoot = new NumberSetting("Перелёт мимо цели (%)", 0.0F, 0.0F, 40.0F, 1.0F, (java.util.function.Supplier<Boolean>)() -> this.customOn());
+   private final NumberSetting cPauseChance = new NumberSetting("Шанс паузы (%)", 0.0F, 0.0F, 30.0F, 1.0F, (java.util.function.Supplier<Boolean>)() -> this.customOn());
+   private final NumberSetting cPauseTicks = new NumberSetting("Длина паузы (тики)", 2.0F, 1.0F, 10.0F, 1.0F, (java.util.function.Supplier<Boolean>)() -> this.customOn() && this.cPauseChance.getCurrent() > 0.0F);
+   private final NumberSetting cReaction = new NumberSetting("Реакция на новую цель (тики)", 0.0F, 0.0F, 15.0F, 1.0F, (java.util.function.Supplier<Boolean>)() -> this.customOn());
+   private final NumberSetting cFov = new NumberSetting("Наводиться в пределах угла (°)", 360.0F, 30.0F, 360.0F, 5.0F, (java.util.function.Supplier<Boolean>)() -> this.customOn());
+   private final BooleanSetting cOnlyBeforeHit = new BooleanSetting("Наводиться только перед ударом", false, () -> this.customOn());
+   private final NumberSetting cHitCharge = new NumberSetting("Начинать при заряде удара от", 0.7F, 0.0F, 1.0F, 0.05F, (java.util.function.Supplier<Boolean>)() -> this.customOn() && this.cOnlyBeforeHit.isEnabled());
+   private final BooleanSetting cHold = new BooleanSetting("Не двигать, если прицел уже на цели", true, () -> this.customOn());
+   private final BooleanSetting cGcd = new BooleanSetting("Шаг как у мыши (GCD)", true, () -> this.customOn());
+   private final NumberSetting cReturn = new NumberSetting("Скорость возврата камеры (°)", 40.0F, 5.0F, 360.0F, 5.0F, (java.util.function.Supplier<Boolean>)() -> this.customOn());
+   private final BooleanSetting cVisible = new BooleanSetting("Видимый поворот (камера крутится)", false, () -> this.customOn());
+   private LivingEntity cTarget;
+   private Vec3d cOffset = Vec3d.ZERO;
+   private float cYaw;
+   private float cPitch;
+   private long cLastCall;
+   private float cMoveTicks;
+   private float cPointAge;
+   private float cReactionLeft;
+   private float cPauseLeft;
+   private boolean cOvershooting;
+   private final double[] cPhases = new double[]{Math.random() * 6.28, Math.random() * 6.28, Math.random() * 6.28, Math.random() * 6.28};
    private final tech.pain.utility.game.player.rotation.custom.NeuroRotation neuroRotation = new tech.pain.utility.game.player.rotation.custom.NeuroRotation();
    private final tech.pain.utility.game.player.rotation.custom.FuntimeRotation funtimeRotation = new tech.pain.utility.game.player.rotation.custom.FuntimeRotation();
    private final tech.pain.utility.game.player.rotation.custom.ShardRotation shardRotation = new tech.pain.utility.game.player.rotation.custom.ShardRotation();
@@ -104,6 +150,8 @@ public final class Aura extends Module {
       this.spookyTime = new ModeSetting.Value(this.rotationMode, "SpookyTime");
       this.none = new ModeSetting.Value(this.rotationMode, "None");
       this.neuro = new ModeSetting.Value(this.rotationMode, "Neuro");
+      // ротация Custom есть только в версии Alpha
+      this.custom = tech.pain.Edition.ALPHA ? new ModeSetting.Value(this.rotationMode, "Custom") : null;
       this.correction = new ModeSetting("Коррекция", new String[0]);
       this.correctionFocus = new ModeSetting.Value(this.correction, "Фокус");
       this.correctionGood = (new ModeSetting.Value(this.correction, "Свободная")).select();
@@ -196,7 +244,9 @@ public final class Aura extends Module {
       }
 
       if (this.target != null) {
-         if (this.isCanAttack() && this.hurtTimer.finished(458L) && !this.target.isBlocking()) {
+         // в быстрых режимах паузу между ударами задаёт сам режим, а не общий таймер
+         boolean fast = this.attackSpeed.is("CPS") || this.attackSpeed.is("По урону") || this.attackSpeed.is("Без задержки");
+         if (this.isCanAttack() && (fast || this.hurtTimer.finished(458L)) && !this.target.isBlocking()) {
             if (mc.player.isSprinting() && !mc.player.isOnGround() && !mc.player.isSwimming()) {
                mc.player.setSprinting(false);
                mc.getNetworkHandler().sendPacket(new ClientCommandC2SPacket(mc.player, Mode.STOP_SPRINTING));
@@ -209,6 +259,7 @@ public final class Aura extends Module {
             mc.player.swingHand(Hand.MAIN_HAND);
             this.neuroRotation.notifyAttack();
             this.hurtTimer.reset();
+            this.markAttack();
          }
 
       }
@@ -375,13 +426,222 @@ public final class Aura extends Module {
             this.neuroRotation.updateRotations(this.target);
          }
 
+         if (this.custom != null && this.custom.isSelected()) {
+            this.customRotation();
+         }
+
       }
    }
 
-   private boolean isCanAttack() {
-      if (mc.player.getAttackCooldownProgress(0.5F) < 0.9F) {
+   private boolean customOn() {
+      return this.custom != null && this.custom.isSelected();
+   }
+
+   /** Точка на цели, в которую целится ротация Custom (без случайного разброса). */
+   private Vec3d customPoint() {
+      Box box = this.target.getBoundingBox();
+      double h = box.getLengthY();
+      Vec3d center = box.getCenter();
+      if (this.cPoint.is("Голова")) {
+         return new Vec3d(center.x, box.minY + h * 0.9, center.z);
+      } else if (this.cPoint.is("Грудь")) {
+         return new Vec3d(center.x, box.minY + h * 0.7, center.z);
+      } else if (this.cPoint.is("Ноги")) {
+         return new Vec3d(center.x, box.minY + h * 0.2, center.z);
+      } else if (this.cPoint.is("Центр")) {
+         return center;
+      } else if (this.cPoint.is("Случайная")) {
+         // случайная точка внутри хитбокса задаётся смещением cOffset, здесь — его основа
+         return center;
+      } else {
+         return MultipointUtils.getNearestPoint(this.target, (double)this.distance.getCurrent());
+      }
+   }
+
+   private float customNoise(int channel) {
+      double t = (double)System.currentTimeMillis() / 1000.0 * (double)this.cJitterSpeed.getCurrent();
+      return (float)(Math.sin(t * 2.7 + this.cPhases[channel]) * 0.6 + Math.sin(t * 7.3 + this.cPhases[channel + 2]) * 0.4);
+   }
+
+   /**
+    * Ротация Custom: каждый тик считает, куда и насколько довернуть голову, по настройкам модуля —
+    * точка прицела, скорость и кривая разгона, замедление у цели, дрожание, перелёт, паузы, реакция.
+    */
+   private void customRotation() {
+      java.util.concurrent.ThreadLocalRandom rnd = java.util.concurrent.ThreadLocalRandom.current();
+      // метод вызывается каждый кадр, а настройки заданы «за тик» — считаем, какая доля тика прошла
+      long nowMs = System.currentTimeMillis();
+      float dt = this.cLastCall == 0L ? 1.0F : MathHelper.clamp((float)(nowMs - this.cLastCall) / 50.0F, 0.0F, 2.0F);
+      boolean idle = nowMs - this.cLastCall > 200L;
+      this.cLastCall = nowMs;
+      // после простоя начинаем от того, куда игрок смотрит сейчас
+      if (idle) {
+         this.cYaw = mc.player.getYaw();
+         this.cPitch = mc.player.getPitch();
+         this.cMoveTicks = 0.0F;
+         this.cOvershooting = false;
+      }
+
+      if (this.target != this.cTarget) {
+         this.cTarget = this.target;
+         this.cReactionLeft = this.cReaction.getCurrent();
+         this.cMoveTicks = 0.0F;
+         this.cPointAge = 1000.0F;
+         this.cOvershooting = this.cOvershoot.getCurrent() > 0.0F;
+      }
+
+      if (this.cOnlyBeforeHit.isEnabled() && mc.player.getAttackCooldownProgress(0.5F) < this.cHitCharge.getCurrent()) {
+         this.cLastCall = 0L;
+         return;
+      }
+
+      // смена точки прицела: разброс вокруг основной точки, а для «Случайной» — по всему хитбоксу
+      this.cPointAge += dt;
+      if (this.cPointAge >= this.cPointTicks.getCurrent()) {
+         this.cPointAge = 0.0F;
+         Box box = this.target.getBoundingBox();
+         double spread = (double)this.cSpread.getCurrent();
+         if (this.cPoint.is("Случайная")) {
+            this.cOffset = new Vec3d(rnd.nextDouble(-0.35, 0.35) * box.getLengthX(), rnd.nextDouble(-0.4, 0.4) * box.getLengthY(), rnd.nextDouble(-0.35, 0.35) * box.getLengthZ());
+         } else {
+            this.cOffset = spread <= 0.0 ? Vec3d.ZERO : new Vec3d(rnd.nextDouble(-spread, spread), rnd.nextDouble(-spread, spread), rnd.nextDouble(-spread, spread));
+         }
+      }
+
+      Vec3d aim = this.customPoint().add(this.cOffset);
+      if (this.cPredict.getCurrent() > 0.0F) {
+         Vec3d motion = new Vec3d(this.target.getX() - this.target.prevX, this.target.getY() - this.target.prevY, this.target.getZ() - this.target.prevZ);
+         aim = aim.add(motion.multiply((double)this.cPredict.getCurrent()));
+      }
+
+      Rotation want = Rotation.lookingAt(aim, mc.player.getEyePos());
+      // дрожание руки — небольшое плавающее смещение точки, а не случайные рывки
+      float dy = MathHelper.wrapDegrees(want.getYaw() + this.customNoise(0) * this.cJitterYaw.getCurrent() - this.cYaw);
+      float dp = MathHelper.clamp(want.getPitch() + this.customNoise(1) * this.cJitterPitch.getCurrent(), -90.0F, 90.0F) - this.cPitch;
+      float stepYaw = 0.0F;
+      float stepPitch = 0.0F;
+      boolean onTarget = this.cHold.isEnabled() && RaytracingUtil.rayTrace(Vec3d.fromPolar(this.cPitch, this.cYaw), (double)this.distance.getCurrent() + 1.0, this.target.getBoundingBox());
+      boolean outOfFov = Math.abs(MathHelper.wrapDegrees(want.getYaw() - mc.gameRenderer.getCamera().getYaw())) > this.cFov.getCurrent() / 2.0F;
+      if (this.cReactionLeft > 0.0F) {
+         this.cReactionLeft -= dt;
+      } else if (this.cPauseLeft > 0.0F) {
+         this.cPauseLeft -= dt;
+      } else if (!onTarget && !outOfFov) {
+         // шанс задан на тик, поэтому на кадр он пропорционально меньше
+         if (this.cPauseChance.getCurrent() > 0.0F && rnd.nextFloat() * 100.0F < this.cPauseChance.getCurrent() * dt) {
+            this.cPauseLeft = this.cPauseTicks.getCurrent();
+         }
+
+         // перелёт: первый рывок к цели уходит чуть дальше неё, потом голова возвращается
+         if (this.cOvershooting) {
+            if (Math.abs(dy) < 3.0F) {
+               this.cOvershooting = false;
+            } else {
+               dy += dy * this.cOvershoot.getCurrent() / 100.0F;
+            }
+         }
+
+         float yawSpeed = Math.min(this.cYawMin.getCurrent(), this.cYawMax.getCurrent()) + rnd.nextFloat() * Math.abs(this.cYawMax.getCurrent() - this.cYawMin.getCurrent());
+         float pitchSpeed = Math.min(this.cPitchMin.getCurrent(), this.cPitchMax.getCurrent()) + rnd.nextFloat() * Math.abs(this.cPitchMax.getCurrent() - this.cPitchMin.getCurrent());
+         float angle = (float)Math.hypot((double)dy, (double)dp);
+         float factor = 1.0F;
+         if (angle > 60.0F) {
+            factor *= this.cFarBoost.getCurrent();
+         }
+
+         if (this.cSlowZone.getCurrent() > 0.0F && angle < this.cSlowZone.getCurrent()) {
+            // рядом с целью рука замедляется
+            factor *= this.cSlowFactor.getCurrent() + (1.0F - this.cSlowFactor.getCurrent()) * angle / this.cSlowZone.getCurrent();
+         }
+
+         if (this.cInterp.is("Экспоненциальная")) {
+            // каждый тик проходим долю оставшегося угла: быстро вначале, всё медленнее к цели
+            float part = 1.0F - (float)Math.pow((double)(1.0F - Math.min(0.999F, this.cExp.getCurrent())), (double)dt);
+            stepYaw = MathHelper.clamp(dy * part, -yawSpeed * factor * dt, yawSpeed * factor * dt);
+            stepPitch = MathHelper.clamp(dp * part, -pitchSpeed * factor * dt, pitchSpeed * factor * dt);
+         } else {
+            float t = this.cAccel.getCurrent() <= 0.0F ? 1.0F : Math.min(1.0F, (this.cMoveTicks + 1.0F) / this.cAccel.getCurrent());
+            float ease;
+            if (this.cInterp.is("Кубическая")) {
+               ease = t < 0.5F ? 4.0F * t * t * t : 1.0F - (float)Math.pow((double)(-2.0F * t + 2.0F), 3.0) / 2.0F;
+            } else if (this.cInterp.is("Синусоидная")) {
+               ease = 0.5F - 0.5F * (float)Math.cos(Math.PI * (double)t);
+            } else {
+               ease = t;
+            }
+
+            // совсем с нуля не стартуем, иначе первый тик пропадает
+            ease = Math.max(ease, 0.12F);
+            stepYaw = MathHelper.clamp(dy, -yawSpeed * ease * factor * dt, yawSpeed * ease * factor * dt);
+            stepPitch = MathHelper.clamp(dp, -pitchSpeed * ease * factor * dt, pitchSpeed * ease * factor * dt);
+         }
+
+         this.cMoveTicks += dt;
+      } else {
+         this.cMoveTicks = 0.0F;
+      }
+
+      float newYaw = this.cYaw + stepYaw;
+      float newPitch = MathHelper.clamp(this.cPitch + stepPitch, -90.0F, 90.0F);
+      if (this.cGcd.isEnabled()) {
+         newYaw -= (newYaw - this.cYaw) % Rotation.gcd();
+         newPitch -= (newPitch - this.cPitch) % Rotation.gcd();
+      }
+
+      this.cYaw = newYaw;
+      this.cPitch = newPitch;
+      float back = this.cReturn.getCurrent();
+      RotationComponent.update(new Rotation(newYaw, newPitch), 360.0F, 360.0F, back, back, 2, 1, this.cVisible.isEnabled());
+   }
+
+   /** Готовность удара по выбранной скорости атаки. */
+   private boolean attackReady() {
+      if (this.attackSpeed.is("Быстрая перезарядка")) {
+         return mc.player.getAttackCooldownProgress(0.5F) >= 0.8F;
+      }
+
+      if (this.attackSpeed.is("CPS")) {
+         long now = System.currentTimeMillis();
+         if (now - this.lastCpsAttack < this.cpsDelay) {
+            return false;
+         }
+
+         return true;
+      }
+
+      if (this.attackSpeed.is("Без задержки")) {
+         return true;
+      }
+
+      if (this.attackSpeed.is("По урону")) {
+         return this.target == null || this.target.hurtTime <= 5;
+      }
+
+      return mc.player.getAttackCooldownProgress(0.5F) >= 0.9F;
+   }
+
+   /** Запоминает удар для режима CPS и выбирает паузу до следующего. */
+   private void markAttack() {
+      float lo = Math.min(this.minCps.getCurrent(), this.maxCps.getCurrent());
+      float hi = Math.max(this.minCps.getCurrent(), this.maxCps.getCurrent());
+      float cps = lo + java.util.concurrent.ThreadLocalRandom.current().nextFloat() * (hi - lo);
+      this.lastCpsAttack = System.currentTimeMillis();
+      this.cpsDelay = (long)(1000.0F / Math.max(1.0F, cps));
+   }
+
+   /** Ждать ли падения для крита: в быстрых режимах и с пакетными критами на земле — нет. */
+   private boolean waitsForCrit() {
+      if (!this.attackSpeed.is("Перезарядка") && !this.attackSpeed.is("Быстрая перезарядка")) {
          return false;
-      } else if (!AttackUtil.canAttack()) {
+      }
+
+      return !(Criticals.INSTANCE.isEnabled() && mc.player.isOnGround());
+   }
+
+   private boolean isCanAttack() {
+      if (!this.attackReady()) {
+         return false;
+      } else if (this.waitsForCrit() && !AttackUtil.canAttack()) {
          return false;
       } else if (this.target instanceof PlayerEntity && this.predictOnElytra.isEnabled() && mc.player.isGliding() && this.target.isGliding() && mc.player.getEyePos().distanceTo(PredictUtils.predict(this.target, this.target.getPos(), this.predict.getCurrent())) > 3.0D && mc.player.getEyePos().distanceTo(this.target.getBoundingBox().getCenter()) > 3.0D) {
          return false;
@@ -434,7 +694,7 @@ public final class Aura extends Module {
                   return false;
                }
 
-               if (AntiBot.INSTANCE.isBot(player)) {
+               if (!tech.pain.client.modules.impl.misc.FakePlayer.isFake(player) && AntiBot.INSTANCE.isBot(player)) {
                   return false;
                }
             }

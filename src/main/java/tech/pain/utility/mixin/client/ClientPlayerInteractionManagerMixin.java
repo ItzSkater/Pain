@@ -47,6 +47,16 @@ public abstract class ClientPlayerInteractionManagerMixin {
    }
 
    @Inject(
+      method = {"attackEntity"},
+      at = {@At("TAIL")}
+   )
+   public void afterAttackHook(PlayerEntity player, Entity target, CallbackInfo ci) {
+      if (tech.pain.client.modules.impl.combat.AttributeSwap.INSTANCE.isEnabled()) {
+         tech.pain.client.modules.impl.combat.AttributeSwap.INSTANCE.afterAttack();
+      }
+   }
+
+   @Inject(
       method = {"clickSlot"},
       at = {@At("HEAD")},
       cancellable = true

@@ -39,12 +39,20 @@ import tech.pain.utility.render.display.shader.DrawUtil;
 )
 public class TargetESP extends Module {
    public static final TargetESP INSTANCE = new TargetESP();
-   private final ModeSetting mode = new ModeSetting("Мод", new String[]{"3D модель", "Маркер", "Призраки", "ThunderHack", "CelkaPasta", "NurikZapen", "Бокс", "Пульс", "Двойной", "Ноги", "Голова", "Дыхание", "Мигание"});
+   private final ModeSetting mode = new ModeSetting("Мод", new String[]{"3D модель", "Котозаяц", "Маркер", "Призраки", "Вихрь", "ThunderHack", "CelkaPasta", "NurikZapen", "Бокс", "Пульс", "Двойной", "Ноги", "Голова", "Дыхание", "Мигание"});
+   private final ModeSetting colorMode = new ModeSetting("Цвет", "Тема", "Радуга", "Свой");
+   private final tech.pain.client.modules.api.setting.impl.ColorSetting customColor = new tech.pain.client.modules.api.setting.impl.ColorSetting("Свой цвет", new ColorRGBA(255, 70, 90), () -> this.colorMode.is("Свой"));
+   private final tech.pain.client.modules.api.setting.impl.NumberSetting orbitSpeed = new tech.pain.client.modules.api.setting.impl.NumberSetting("Скорость призраков", 1.0F, 0.1F, 4.0F, 0.1F, (java.util.function.Supplier<Boolean>)() -> this.mode.is("Призраки") || this.mode.is("Вихрь"));
+   private double orbitTime;
+   private long orbitFrame;
+   private final tech.pain.client.modules.api.setting.impl.NumberSetting imageSize = new tech.pain.client.modules.api.setting.impl.NumberSetting("Размер картинки", 1.0F, 0.4F, 3.0F, 0.05F, (java.util.function.Supplier<Boolean>)() -> this.mode.is("Котозаяц"));
+   private final ModeSetting imagePlace = new ModeSetting("Где картинка", () -> this.mode.is("Котозаяц"), "На цели", "Над головой");
+   private final tech.pain.client.modules.api.setting.impl.BooleanSetting imageSway = new tech.pain.client.modules.api.setting.impl.BooleanSetting("Покачивается", true, () -> this.mode.is("Котозаяц"));
    private final ModeSetting model3d = new ModeSetting("Модель", () -> this.mode.is("3D модель"), "Pain Logo", "Claw'd", "Свой файл");
    private final ModeSetting place3d = new ModeSetting("Положение", () -> this.mode.is("3D модель"), "Над головой", "Орбита", "Кольцо вокруг");
    private final tech.pain.client.modules.api.setting.impl.NumberSetting size3d = new tech.pain.client.modules.api.setting.impl.NumberSetting("Размер", 0.9F, 0.3F, 3.0F, 0.05F, (java.util.function.Supplier<Boolean>)() -> this.mode.is("3D модель"));
    private final tech.pain.client.modules.api.setting.impl.NumberSetting spin3d = new tech.pain.client.modules.api.setting.impl.NumberSetting("Вращение", 1.0F, 0.0F, 5.0F, 0.1F, (java.util.function.Supplier<Boolean>)() -> this.mode.is("3D модель"));
-   private final tech.pain.client.modules.api.setting.impl.BooleanSetting tint3d = new tech.pain.client.modules.api.setting.impl.BooleanSetting("Красить цветом темы", false, (java.util.function.Supplier<Boolean>)() -> this.mode.is("3D модель"));
+   private final tech.pain.client.modules.api.setting.impl.BooleanSetting tint3d = new tech.pain.client.modules.api.setting.impl.BooleanSetting("Красить выбранным цветом", false, (java.util.function.Supplier<Boolean>)() -> this.mode.is("3D модель"));
    private final Animation appear3d = new Animation(350L, Easing.CUBIC_OUT);
    private Entity target3d;
    private net.minecraft.util.math.Vec3d pos3d;
@@ -78,6 +86,23 @@ public class TargetESP extends Module {
       super.onEnable();
    }
 
+   /** Цвет эффекта: тема (перелив двух цветов темы), радуга или свой. index сдвигает фазу перелива. */
+   private ColorRGBA col(int index) {
+      if (this.colorMode.is("Свой")) {
+         ColorRGBA c = this.customColor.getColor();
+         // лёгкий перелив яркости, чтобы эффект не был плоским
+         float wave = 0.82F + 0.18F * (float)Math.sin((double)(System.currentTimeMillis() - INIT_TIME) / 400.0 + (double)index * 0.12);
+         return new ColorRGBA((int)((float)c.getRed() * wave), (int)((float)c.getGreen() * wave), (int)((float)c.getBlue() * wave), 255);
+      }
+
+      if (this.colorMode.is("Радуга")) {
+         float phase = (float)((System.currentTimeMillis() - INIT_TIME) % 4000L) / 4000.0F + (float)index / 360.0F;
+         return new ColorRGBA(tech.pain.utility.render.level.ParticleShapes.rainbow(phase, 0.7F, 1.0F) | 0xFF000000);
+      }
+
+      return Pain.getInstance().getThemeManager().getClientColor(index);
+   }
+
    @EventTarget
    private void onRenderWorldLast(EventRender3D e) {
       if (this.mode.is("3D модель")) {
@@ -85,11 +110,17 @@ public class TargetESP extends Module {
          return;
       }
 
-      if (this.mode.is("Призраки")) {
-         this.drawSpiritsTrack(e);
+      if (this.mode.is("Котозаяц")) {
+         this.drawImage(e);
+         return;
       }
 
-      if (!this.mode.is("Призраки") && !this.mode.is("Маркер")) {
+      if (this.mode.is("Призраки") || this.mode.is("Вихрь")) {
+         this.drawOrbiting(e, this.mode.is("Вихрь"));
+         return;
+      }
+
+      if (!this.mode.is("Маркер")) {
          Entity styleTarget = Aura.INSTANCE.getTarget();
          if (styleTarget != null) {
             if (this.mode.is("ThunderHack")) {
@@ -157,13 +188,61 @@ public class TargetESP extends Module {
             float alpha = this.animation.getValue();
             float size = 12.0F;
             Theme theme = Pain.getInstance().getThemeManager().getCurrentTheme();
-            ColorRGBA color = theme.getColor().withAlpha((int)(alpha * 255.0F));
+            ColorRGBA color = this.col(0).withAlpha((int)(alpha * 255.0F));
             DrawUtil.drawTexture(matrices, textureId, 0.0F - size / 2.0F, 0.0F - size / 2.0F, size, size, color);
             RenderSystem.enableDepthTest();
             RenderSystem.disableBlend();
             matrices.pop();
          }
       }
+   }
+
+   /** Картинка-метка на цели: всегда повёрнута к камере, появляется с увеличением, слегка покачивается. */
+   private void drawImage(EventRender3D e) {
+      Entity target = Aura.INSTANCE.getTarget();
+      boolean has = target != null && Aura.INSTANCE.isEnabled();
+      if (has) {
+         this.lastTarget = target;
+      }
+
+      this.animation.update(has);
+      float appear = this.animation.getValue();
+      if (appear <= 0.01F || this.lastTarget == null) {
+         if (appear <= 0.01F) {
+            this.lastTarget = null;
+         }
+
+         return;
+      }
+
+      Vec3d cam = mc.gameRenderer.getCamera().getPos();
+      Vec3d pos = this.interp(e, this.lastTarget);
+      float height = this.lastTarget.getHeight();
+      double time = (double)(System.currentTimeMillis() - INIT_TIME) / 1000.0;
+      boolean above = this.imagePlace.is("Над головой");
+      float size = this.imageSize.getCurrent() * (above ? 0.7F : 1.0F);
+      double y = pos.y - cam.y + (above ? (double)height + 0.25 + (double)size * 0.45 + Math.sin(time * 2.2) * 0.05 : (double)height * 0.55);
+      MatrixStack matrices = e.getMatrix();
+      matrices.push();
+      matrices.translate(pos.x - cam.x, y, pos.z - cam.z);
+      matrices.multiply(RotationAxis.POSITIVE_Y.rotationDegrees(-mc.gameRenderer.getCamera().getYaw()));
+      matrices.multiply(RotationAxis.POSITIVE_X.rotationDegrees(mc.gameRenderer.getCamera().getPitch()));
+      // появление «пружинкой»: чуть перелетает нужный размер и возвращается
+      float pop = 1.0F + 2.2F * (float)Math.pow((double)(appear - 1.0F), 3.0) + 1.2F * (float)Math.pow((double)(appear - 1.0F), 2.0);
+      float scale = 0.1F * size * pop;
+      matrices.scale(-scale, -scale, scale);
+      if (this.imageSway.isEnabled()) {
+         matrices.multiply(RotationAxis.POSITIVE_Z.rotationDegrees((float)Math.sin(time * 2.6) * 7.0F));
+      }
+
+      RenderSystem.disableDepthTest();
+      RenderSystem.enableBlend();
+      RenderSystem.defaultBlendFunc();
+      float half = 5.0F;
+      DrawUtil.drawTexture(matrices, Identifier.of("pain", "icons/kotozayac.png"), -half, -half, half * 2.0F, half * 2.0F, new ColorRGBA(255, 255, 255, (int)(Math.min(1.0F, appear * 1.3F) * 255.0F)));
+      RenderSystem.enableDepthTest();
+      RenderSystem.disableBlend();
+      matrices.pop();
    }
 
    private Vec3d interp(EventRender3D e, Entity t) {
@@ -299,7 +378,7 @@ public class TargetESP extends Module {
       }
 
       tech.pain.base.theme.Theme theme = tech.pain.Pain.getInstance().getThemeManager().getCurrentTheme();
-      model.draw(ms, Math.min(1.0F, appear * 1.4F), theme.getColor(), this.tint3d.isEnabled() ? 0.85F : 0.0F);
+      model.draw(ms, Math.min(1.0F, appear * 1.4F), this.col(0), this.tint3d.isEnabled() ? 0.85F : 0.0F);
       ms.pop();
    }
 
@@ -307,8 +386,8 @@ public class TargetESP extends Module {
       Vec3d p = this.interp(e, target);
       double w = target.getWidth() / 2.0D;
       double h = target.getHeight();
-      int c1 = Pain.getInstance().getThemeManager().getClientColor(90).getRGB();
-      int c2 = Pain.getInstance().getThemeManager().getClientColor(0).withAlpha(120).getRGB();
+      int c1 = this.col(90).getRGB();
+      int c2 = this.col(0).withAlpha(120).getRGB();
       Render3DUtil.drawBox(new Box(p.x - w, p.y, p.z - w, p.x + w, p.y + h, p.z + w), c1, 1.5F);
       double e2 = 0.18D;
       Render3DUtil.drawBox(new Box(p.x - w - e2, p.y - e2, p.z - w - e2, p.x + w + e2, p.y + h + e2, p.z + w + e2), c2, 1.0F);
@@ -317,7 +396,7 @@ public class TargetESP extends Module {
    private void drawFeetBox(EventRender3D e, Entity target) {
       Vec3d p = this.interp(e, target);
       double w = target.getWidth() / 2.0D + 0.1D;
-      int color = Pain.getInstance().getThemeManager().getClientColor(90).getRGB();
+      int color = this.col(90).getRGB();
       Render3DUtil.drawBox(new Box(p.x - w, p.y, p.z - w, p.x + w, p.y + 0.08D, p.z + w), color, 1.5F);
    }
 
@@ -325,7 +404,7 @@ public class TargetESP extends Module {
       Vec3d p = this.interp(e, target);
       double w = target.getWidth() / 2.0D + 0.05D;
       double h = target.getHeight();
-      int color = Pain.getInstance().getThemeManager().getClientColor(90).getRGB();
+      int color = this.col(90).getRGB();
       Render3DUtil.drawBox(new Box(p.x - w, p.y + h - 0.5D, p.z - w, p.x + w, p.y + h + 0.05D, p.z + w), color, 1.5F);
    }
 
@@ -334,7 +413,7 @@ public class TargetESP extends Module {
       double w = target.getWidth() / 2.0D;
       double h = target.getHeight();
       double pulse = 0.25D * (Math.sin((double)(System.currentTimeMillis() - INIT_TIME) / 500.0D) * 0.5D + 0.5D);
-      int color = Pain.getInstance().getThemeManager().getClientColor(90).withAlpha(140).getRGB();
+      int color = this.col(90).withAlpha(140).getRGB();
       Render3DUtil.drawBox(new Box(p.x - w - pulse, p.y, p.z - w - pulse, p.x + w + pulse, p.y + h + pulse, p.z + w + pulse), color, 1.0F);
    }
 
@@ -343,7 +422,7 @@ public class TargetESP extends Module {
       double w = target.getWidth() / 2.0D;
       double h = target.getHeight();
       int alpha = (int)((Math.sin((double)(System.currentTimeMillis() - INIT_TIME) / 150.0D) * 0.5D + 0.5D) * 255.0D);
-      int color = Pain.getInstance().getThemeManager().getClientColor(90).withAlpha(alpha).getRGB();
+      int color = this.col(90).withAlpha(alpha).getRGB();
       Render3DUtil.drawBox(new Box(p.x - w, p.y, p.z - w, p.x + w, p.y + h, p.z + w), color, 1.5F);
    }
 
@@ -354,7 +433,7 @@ public class TargetESP extends Module {
       double z = target.lastRenderZ + (target.getZ() - target.lastRenderZ) * (double)delta;
       double w = target.getWidth() / 2.0D;
       Box box = new Box(x - w, y, z - w, x + w, y + (double)target.getHeight(), z + w);
-      int color = Pain.getInstance().getThemeManager().getClientColor(90).getRGB();
+      int color = this.col(90).getRGB();
       Render3DUtil.drawBox(box, color, 1.5F);
    }
 
@@ -366,7 +445,7 @@ public class TargetESP extends Module {
       double w = target.getWidth() / 2.0D;
       double pulse = 0.15D * (Math.sin((double)(System.currentTimeMillis() - INIT_TIME) / 250.0D) * 0.5D + 0.5D);
       Box box = new Box(x - w - pulse, y - pulse, z - w - pulse, x + w + pulse, y + (double)target.getHeight() + pulse, z + w + pulse);
-      int color = Pain.getInstance().getThemeManager().getClientColor(90).withAlpha(160).getRGB();
+      int color = this.col(90).withAlpha(160).getRGB();
       Render3DUtil.drawBox(box, color, 1.0F);
    }
 
@@ -405,7 +484,7 @@ public class TargetESP extends Module {
                alpha = 0.0F;
             }
 
-            int rgb = Pain.getInstance().getThemeManager().getClientColor((int)((float)j / 20.0F)).withAlpha((int)(alpha * 255.0F)).getRGB();
+            int rgb = this.col((int)((float)j / 20.0F)).withAlpha((int)(alpha * 255.0F)).getRGB();
             Vec3d a = verts.get(j);
             Vec3d b = verts.get(j + 1);
             buffer.vertex(matrix, (float)a.x, (float)a.y, (float)a.z).color(rgb);
@@ -442,8 +521,8 @@ public class TargetESP extends Module {
       for(int i = 0; i <= 30; ++i) {
          float cos = (float)(x + Math.cos((double)i * 6.28D / 30.0D) * (double)target.getWidth() * 0.8D);
          float sin = (float)(z + Math.sin((double)i * 6.28D / 30.0D) * (double)target.getWidth() * 0.8D);
-         int top = Pain.getInstance().getThemeManager().getClientColor(i).withAlpha(170).getRGB();
-         int bottom = Pain.getInstance().getThemeManager().getClientColor(i).withAlpha(0).getRGB();
+         int top = this.col(i).withAlpha(170).getRGB();
+         int bottom = this.col(i).withAlpha(0).getRGB();
          buffer.vertex(matrix, cos, (float)nextY, sin).color(top);
          buffer.vertex(matrix, cos, (float)yBase, sin).color(bottom);
       }
@@ -479,10 +558,10 @@ public class TargetESP extends Module {
       org.joml.Matrix4f matrix = matrices.peek().getPositionMatrix();
       RenderSystem.setShader(ShaderProgramKeys.POSITION_TEX_COLOR);
       BufferBuilder buffer = Tessellator.getInstance().begin(DrawMode.QUADS, VertexFormats.POSITION_TEXTURE_COLOR);
-      int c0 = Pain.getInstance().getThemeManager().getClientColor(90).getRGB();
-      int c1 = Pain.getInstance().getThemeManager().getClientColor(0).getRGB();
-      int c2 = Pain.getInstance().getThemeManager().getClientColor(180).getRGB();
-      int c3 = Pain.getInstance().getThemeManager().getClientColor(270).getRGB();
+      int c0 = this.col(90).getRGB();
+      int c1 = this.col(0).getRGB();
+      int c2 = this.col(180).getRGB();
+      int c3 = this.col(270).getRGB();
       buffer.vertex(matrix, 0.0F, 1.5F, 0.0F).texture(0.0F, 1.0F).color(c0);
       buffer.vertex(matrix, 1.5F, 1.5F, 0.0F).texture(1.0F, 1.0F).color(c1);
       buffer.vertex(matrix, 1.5F, 0.0F, 0.0F).texture(1.0F, 0.0F).color(c2);
@@ -518,68 +597,108 @@ public class TargetESP extends Module {
       return old + (current - old) * scale;
    }
 
-   private void drawSpiritsTrack(EventRender3D event3D) {
+   /**
+    * Призраки и Вихрь. Рисуются мягкими светящимися точками без текстур, поверх мира.
+    * Призраки — три огонька с хвостами кружат вокруг цели на разной высоте;
+    * Вихрь — три закрученные ленты поднимаются воронкой от ног выше головы.
+    */
+   private void drawOrbiting(EventRender3D e, boolean vortex) {
       Aura aura = Aura.INSTANCE;
-      this.animation2.update(aura.getTarget() != null && aura.isEnabled());
-      if ((double)this.animation2.getValue() != 0.0D) {
-         MatrixStack e = event3D.getMatrix();
-         if (aura.getTarget() != null) {
-            if (this.lastTarget == null) {
-               this.currentTime = System.currentTimeMillis();
-            }
+      Entity current = aura.getTarget();
+      boolean has = current != null && aura.isEnabled();
+      if (has) {
+         this.lastTarget = current;
+      }
 
-            this.lastTarget = aura.getTarget();
+      this.animation2.update(has);
+      float appear = this.animation2.getValue();
+      if (appear <= 0.01F || this.lastTarget == null) {
+         if (appear <= 0.01F) {
+            this.lastTarget = null;
          }
 
-         if (this.lastTarget != null) {
-            this.animationNurik += (float)(5L * (System.currentTimeMillis() - this.currentTime)) / 600.0F;
-            this.currentTime = System.currentTimeMillis();
-            RenderSystem.setShader(ShaderProgramKeys.POSITION_TEX_COLOR);
-            RenderSystem.setShaderTexture(0, Pain.id("icons/glow.png"));
-            RenderSystem.enableBlend();
-            RenderSystem.blendFuncSeparate(770, 1, 0, 1);
-            RenderSystem.disableCull();
-            RenderSystem.disableDepthTest();
-            RenderSystem.depthMask(false);
-            double x = interpolate(this.lastTarget.getX(), this.lastTarget.lastRenderX, (double)event3D.getPartialTicks()) - mc.gameRenderer.getCamera().getPos().getX();
-            double y = interpolate(this.lastTarget.getY(), this.lastTarget.lastRenderY, (double)event3D.getPartialTicks()) - mc.gameRenderer.getCamera().getPos().getY();
-            double z = interpolate(this.lastTarget.getZ(), this.lastTarget.lastRenderZ, (double)event3D.getPartialTicks()) - mc.gameRenderer.getCamera().getPos().getZ();
-            int n2 = 3;
-            int n3 = 12;
-            int n4 = 3 * n2;
-            e.push();
-            BufferBuilder buffer = Tessellator.getInstance().begin(DrawMode.QUADS, VertexFormats.POSITION_TEXTURE_COLOR);
+         return;
+      }
 
-            for(int i = 0; i < n4; i += n2) {
-               for(int j = 0; j < n3; ++j) {
-                  ColorRGBA color = Pain.getInstance().getThemeManager().getCurrentTheme().getColor();
-                  float f2 = this.animationNurik + (float)j * 0.1F;
-                  float f3 = 0.8F;
-                  float f4 = 0.5F;
-                  int n5 = (int)Math.pow((double)i, 2.0D);
-                  e.push();
-                  e.translate(x + (double)(f3 * MathHelper.sin(f2 + (float)n5)), y + (double)f4 + (double)(0.3F * MathHelper.sin(this.animationNurik + (float)j * 0.2F)) + (double)(0.2F * (float)i), z + (double)(f3 * MathHelper.cos(f2 - (float)n5)));
-                  e.scale(this.animation2.getValue() * (0.005F + (float)j / 2000.0F), this.animation2.getValue() * (0.005F + (float)j / 2000.0F), this.animation2.getValue() * (0.005F + (float)j / 2000.0F));
-                  e.multiply(mc.gameRenderer.getCamera().getRotation());
-                  int n7 = -25;
-                  int n8 = 50;
-                  buffer.vertex(e.peek().getPositionMatrix(), (float)n7, (float)(n7 + n8), 0.0F).texture(0.0F, 1.0F).color(color.withAlpha((int)(this.animation2.getValue() * 255.0F)).getRGB());
-                  buffer.vertex(e.peek().getPositionMatrix(), (float)(n7 + n8), (float)(n7 + n8), 0.0F).texture(1.0F, 1.0F).color(color.withAlpha((int)(this.animation2.getValue() * 255.0F)).getRGB());
-                  buffer.vertex(e.peek().getPositionMatrix(), (float)(n7 + n8), (float)n7, 0.0F).texture(1.0F, 0.0F).color(color.withAlpha((int)(this.animation2.getValue() * 255.0F)).getRGB());
-                  buffer.vertex(e.peek().getPositionMatrix(), (float)n7, (float)n7, 0.0F).texture(0.0F, 0.0F).color(color.withAlpha((int)(this.animation2.getValue() * 255.0F)).getRGB());
-                  e.pop();
+      Vec3d cam = mc.gameRenderer.getCamera().getPos();
+      Vec3d pos = this.interp(e, this.lastTarget);
+      float bx = (float)(pos.x - cam.x);
+      float by = (float)(pos.y - cam.y);
+      float bz = (float)(pos.z - cam.z);
+      float height = this.lastTarget.getHeight();
+      float width = this.lastTarget.getWidth();
+      // своё время, которое идёт со скоростью из настройки: при её смене движение не прыгает
+      long nowMs = System.currentTimeMillis();
+      this.orbitTime += (double)Math.min(100L, this.orbitFrame == 0L ? 0L : nowMs - this.orbitFrame) / 1000.0 * (double)this.orbitSpeed.getCurrent();
+      this.orbitFrame = nowMs;
+      double time = this.orbitTime;
+      org.joml.Quaternionf rotation = mc.gameRenderer.getCamera().getRotation();
+      org.joml.Vector3f right = new org.joml.Vector3f(1.0F, 0.0F, 0.0F).rotate(rotation);
+      org.joml.Vector3f up = new org.joml.Vector3f(0.0F, 1.0F, 0.0F).rotate(rotation);
+      org.joml.Matrix4f mat = e.getMatrix().peek().getPositionMatrix();
+      RenderSystem.enableBlend();
+      // сложение цветов: точки светятся и ярче там, где накладываются
+      RenderSystem.blendFuncSeparate(770, 1, 0, 1);
+      RenderSystem.disableCull();
+      RenderSystem.disableDepthTest();
+      RenderSystem.depthMask(false);
+      RenderSystem.setShader(ShaderProgramKeys.POSITION_COLOR);
+      BufferBuilder bb = Tessellator.getInstance().begin(DrawMode.TRIANGLES, VertexFormats.POSITION_COLOR);
+      if (vortex) {
+         int arms = 3;
+         int steps = 46;
+
+         for (int arm = 0; arm < arms; ++arm) {
+            for (int i = 0; i < steps; ++i) {
+               float t = (float)i / (float)(steps - 1);
+               // лента закручивается и бежит вверх; воронка расширяется кверху
+               float angle = (float)(time * 3.2) + (float)arm * 6.2832F / (float)arms + t * 7.5F;
+               float radius = (width * 0.55F + 0.15F) * (0.45F + 0.95F * t) * appear;
+               float y = by + t * (height + 0.5F);
+               float x = bx + MathHelper.cos(angle) * radius;
+               float z = bz + MathHelper.sin(angle) * radius;
+               // бегущая вверх волна яркости
+               float pulse = 0.55F + 0.45F * (float)Math.sin((double)(t * 9.0F) - time * 6.0 + (double)arm);
+               float alpha = appear * (0.25F + 0.75F * pulse) * (1.0F - t * 0.55F);
+               int rgb = this.col((int)(t * 120.0F) + arm * 40).getRGB() & 0xFFFFFF;
+               float size = 0.085F - 0.035F * t;
+               tech.pain.utility.render.level.ParticleShapes.softDot(bb, mat, x, y, z, right, up, size * 2.2F, rgb, alpha * 0.35F);
+               tech.pain.utility.render.level.ParticleShapes.softDot(bb, mat, x, y, z, right, up, size, 0xFFFFFF, alpha * 0.55F);
+            }
+         }
+      } else {
+         int spirits = 3;
+         int tail = 18;
+
+         for (int k = 0; k < spirits; ++k) {
+            for (int j = tail - 1; j >= 0; --j) {
+               // хвост — та же орбита, но чуть раньше по времени
+               double tt = time - (double)j * 0.028 * Math.min(1.0, (double)this.orbitSpeed.getCurrent() + 0.4);
+               float angle = (float)(tt * 3.4) + (float)k * 6.2832F / (float)spirits;
+               float radius = (width * 0.5F + 0.45F) * appear;
+               float y = by + height * 0.5F + (float)Math.sin(tt * 2.1 + (double)k * 2.1) * height * 0.38F;
+               float x = bx + MathHelper.cos(angle) * radius;
+               float z = bz + MathHelper.sin(angle) * radius;
+               float f = 1.0F - (float)j / (float)tail;
+               int rgb = this.col(k * 60 + j * 4).getRGB() & 0xFFFFFF;
+               float size = 0.05F + 0.11F * f;
+               tech.pain.utility.render.level.ParticleShapes.softDot(bb, mat, x, y, z, right, up, size * 2.0F, rgb, appear * f * 0.4F);
+               if (j < 4) {
+                  tech.pain.utility.render.level.ParticleShapes.softDot(bb, mat, x, y, z, right, up, size * 0.7F, 0xFFFFFF, appear * f * 0.7F);
                }
             }
-
-            BufferRenderer.drawWithGlobalProgram(buffer.end());
-            e.pop();
-            RenderSystem.enableDepthTest();
-            RenderSystem.depthMask(true);
-            RenderSystem.disableBlend();
-            RenderSystem.blendFunc(770, 771);
-            RenderSystem.enableCull();
          }
-
       }
+
+      net.minecraft.client.render.BuiltBuffer built = bb.endNullable();
+      if (built != null) {
+         BufferRenderer.drawWithGlobalProgram(built);
+      }
+
+      RenderSystem.depthMask(true);
+      RenderSystem.enableDepthTest();
+      RenderSystem.enableCull();
+      RenderSystem.blendFunc(770, 771);
+      RenderSystem.disableBlend();
    }
 }

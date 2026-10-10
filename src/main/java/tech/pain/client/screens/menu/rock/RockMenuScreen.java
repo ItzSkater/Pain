@@ -75,6 +75,7 @@ public class RockMenuScreen extends MenuScreen {
    private float dragW;
    private boolean closing;
    private boolean categoryInit;
+   private tech.pain.client.modules.api.setting.impl.StringSetting editing;
    private java.util.function.Supplier<ColorRGBA> pickGet;
    private java.util.function.Consumer<ColorRGBA> pickSet;
    private String pickTitle = "";
@@ -147,7 +148,7 @@ public class RockMenuScreen extends MenuScreen {
    }
 
    public boolean wantsKeyboard() {
-      return this.searchFocus || this.bindingModule != null || this.bindingKey != null || this.pickSet != null;
+      return this.searchFocus || this.bindingModule != null || this.bindingKey != null || this.pickSet != null || this.editing != null;
    }
 
    /** Рисует меню в текущий framebuffer; курсор — точка, куда смотрит игрок на 3D-экране. */
@@ -291,16 +292,11 @@ public class RockMenuScreen extends MenuScreen {
       if (glass) {
          // стекло: за окном сильный блюр, поверх лёгкое затемнение, белёсый тон и блик сверху
          if (this.embedded) {
+            // на 3D-экране блюра нет: сплошной серо-синий фон, поверх — блик и обод стекла
             DrawUtil.drawRoundedRect(m, this.x, this.y, this.w, this.h, BorderRadius.all(RADIUS), new ColorRGBA(46, 52, 66, 255));
-         } else {
-            DrawUtil.drawBlur(m, this.x, this.y, this.w, this.h, 26.0F, BorderRadius.all(RADIUS), new ColorRGBA(255, 255, 255, 255.0F * a));
-            DrawUtil.drawRoundedRect(m, this.x, this.y, this.w, this.h, BorderRadius.all(RADIUS), new ColorRGBA(22, 26, 36, 105.0F * a));
          }
 
-         DrawUtil.drawRoundedRect(m, this.x, this.y, this.w, this.h, BorderRadius.all(RADIUS), new ColorRGBA(255, 255, 255, 18.0F * a));
-         ColorRGBA hi = new ColorRGBA(255, 255, 255, 34.0F * a);
-         ColorRGBA none = new ColorRGBA(255, 255, 255, 0);
-         DrawUtil.drawRoundedRect(m, this.x + 1.0F, this.y + 0.5F, this.w - 2.0F, 46.0F, BorderRadius.top(RADIUS, RADIUS), Gradient.of(hi, none, hi, none));
+         tech.pain.client.hud.HudStyle.glass(m, this.x, this.y, this.w, this.h, BorderRadius.all(RADIUS), a, !this.embedded);
       } else {
          DrawUtil.drawRoundedRect(m, this.x, this.y, this.w, this.h, BorderRadius.all(RADIUS), new ColorRGBA(12, 12, 16, this.embedded ? 255.0F : 228.0F * a));
       }
@@ -940,6 +936,31 @@ public class RockMenuScreen extends MenuScreen {
          final float openX = cx + cw - 25.0F;
          final float openY = cy + 18.0F;
          this.hits.add(new Hit(cx, cy, cw, ch, () -> this.openPicker(s.getName(), openX, openY, color::getColor, color::setColor, true), () -> color.setColor(theme.getColor()), null).clip(top, bottom));
+      } else if (s instanceof tech.pain.client.modules.api.setting.impl.StringSetting str) {
+         // текстовое поле: клик — начать ввод, Enter или клик мимо — закончить
+         boolean active = this.editing == str;
+         float fieldW = Math.min(cw * 0.55F, 110.0F);
+         float fx = cx + cw - 7.0F - fieldW;
+         MsdfRenderer.renderText(Fonts.REGULAR, s.getName(), 7.0F, text.getRGB(), m.peek().getPositionMatrix(), tx, cy + 7.5F, 0.0F, true, 0.8F, 1.0F, cw - fieldW - 20.0F);
+         DrawUtil.drawRoundedRect(m, fx, cy + 4.5F, fieldW, 12.0F, BorderRadius.all(3.5F), new ColorRGBA(255, 255, 255, (active ? 26.0F : 14.0F) * a));
+         if (active) {
+            DrawUtil.drawRoundedBorder(m, fx, cy + 4.5F, fieldW, 12.0F, -0.5F, BorderRadius.all(3.5F), theme.getColor().withAlpha(170.0F * a));
+         }
+
+         String value = str.get();
+         boolean empty = value.isEmpty();
+         String shown = empty && !active ? "не задано" : value;
+         MsdfRenderer.renderText(Fonts.REGULAR, shown, 6.5F, (empty ? dim : text).getRGB(), m.peek().getPositionMatrix(), fx + 4.0F, cy + 8.0F, 0.0F, true, 0.85F, 1.0F, fieldW - 8.0F);
+         if (active && System.currentTimeMillis() % 1000L < 520L) {
+            float caret = fx + 4.0F + Math.min(fieldW - 9.0F, Fonts.REGULAR.getWidth(value, 6.5F)) + 0.5F;
+            DrawUtil.drawRect(m, caret, cy + 7.0F, 0.6F, 7.0F, theme.getColor().withAlpha(255.0F * a));
+         }
+
+         this.hits.add(new Hit(cx, cy, cw, ch, () -> {
+            this.editing = str;
+            this.bindingKey = null;
+            this.bindingModule = null;
+         }, () -> str.set(""), null).clip(top, bottom));
       } else if (s instanceof ItemSelectSetting items) {
          MsdfRenderer.renderText(Fonts.REGULAR, s.getName(), 7.0F, text.getRGB(), m.peek().getPositionMatrix(), tx, cy + 7.5F, 0.0F, true, 0.8F, 1.0F, maxName - 30.0F);
          String cnt = String.valueOf(items.getItemsById().size());
@@ -1136,6 +1157,7 @@ public class RockMenuScreen extends MenuScreen {
          return true;
       }
 
+      this.editing = null;
       boolean wasSearch = this.searchFocus;
       this.searchFocus = false;
 
@@ -1206,6 +1228,22 @@ public class RockMenuScreen extends MenuScreen {
          return true;
       }
 
+      if (this.editing != null) {
+         String value = this.editing.get();
+         if (keyCode == GLFW.GLFW_KEY_ESCAPE || keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
+            this.editing = null;
+         } else if (keyCode == GLFW.GLFW_KEY_BACKSPACE) {
+            this.editing.set(Screen.hasControlDown() || value.isEmpty() ? "" : value.substring(0, value.length() - 1));
+         } else if (Screen.hasControlDown() && keyCode == GLFW.GLFW_KEY_V) {
+            String clip = GLFW.glfwGetClipboardString(mc.getWindow().getHandle());
+            if (clip != null) {
+               this.editing.set(value + clip.replace("\n", "").replace("\r", ""));
+            }
+         }
+
+         return true;
+      }
+
       if (keyCode == GLFW.GLFW_KEY_ESCAPE && this.pickSet != null) {
          this.pickSet = null;
          this.pickGet = null;
@@ -1259,6 +1297,14 @@ public class RockMenuScreen extends MenuScreen {
 
    @Override
    public boolean charTyped(char chr, int modifiers) {
+      if (this.editing != null) {
+         if (chr >= ' ' && chr != '§') {
+            this.editing.set(this.editing.get() + chr);
+         }
+
+         return true;
+      }
+
       if (this.searchFocus && chr >= ' ' && this.query.length() < 32) {
          this.query = this.query + chr;
          this.onQueryChanged();

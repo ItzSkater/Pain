@@ -22,7 +22,7 @@ import tech.pain.utility.render.display.base.color.ColorRGBA;
 public class CustomFog extends Module {
    public static final CustomFog INSTANCE = new CustomFog();
    public final NumberSetting distanceSetting = new NumberSetting("Дистанция тумана", 80.0F, 10.0F, 255.0F, 5.0F);
-   private final ModeSetting effect = new ModeSetting("Эффект", "Тема", "Перелив", "Радуга", "Закат", "Свой цвет");
+   private final ModeSetting effect = new ModeSetting("Эффект", "Тема", "Перелив", "Радуга", "Закат", "Серый", "Свой цвет");
    private final ColorSetting custom = new ColorSetting("Цвет", new ColorRGBA(140, 90, 255), (Supplier<Boolean>)() -> this.effect.is("Свой цвет"));
    private final NumberSetting speed = new NumberSetting("Скорость", 1.0F, 0.1F, 5.0F, 0.1F);
    private final NumberSetting brightness = new NumberSetting("Яркость", 1.0F, 0.2F, 1.0F, 0.05F);
@@ -47,6 +47,9 @@ public class CustomFog extends Module {
             float k = 0.5F + 0.5F * (float)Math.sin(t * 0.5);
             ColorRGBA warm = new ColorRGBA(255, 140, 70).mix(new ColorRGBA(255, 90, 150), k);
             color = warm.mix(new ColorRGBA(120, 70, 220), 0.5F + 0.5F * (float)Math.sin(t * 0.23 + 1.3));
+            break;
+         case "Серый":
+            color = new ColorRGBA(150, 154, 162);
             break;
          case "Свой цвет":
             color = this.custom.getColor();

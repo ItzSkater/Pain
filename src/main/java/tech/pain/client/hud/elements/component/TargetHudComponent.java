@@ -57,7 +57,106 @@ public class TargetHudComponent extends DraggableHudElement {
       }
    }
 
+   /** Таргет-худ в стиле Liquid Glass: стеклянная капсула, круглая голова в кольце здоровья, полоса-пилюля. */
+   private void renderGlass(CustomDrawContext ctx, LivingEntity target, float animation) {
+      net.minecraft.client.util.math.MatrixStack m = ctx.getMatrices();
+      float width = 124.0F;
+      float height = 40.0F;
+      float a = animation;
+      // появление: лёгкое увеличение из центра
+      float scale = 0.9F + 0.1F * a;
+      float posX = this.x;
+      float posY = this.y;
+      Theme theme = Pain.getInstance().getThemeManager().getCurrentTheme();
+      float hp = ScoreboardHealth.INSTANCE.isEnabled() ? PlayerIntersectionUtil.getHealth(target) : target.getHealth();
+      float max = Math.max(1.0F, target.getMaxHealth());
+      this.healthAnimation.update(hp / max);
+      if (this.outdatedHealthAnimation.getValue() < this.healthAnimation.getValue()) {
+         this.outdatedHealthAnimation.setValue(this.healthAnimation.getValue());
+         this.outdatedHealthAnimation.setStartValue(this.healthAnimation.getValue());
+      } else {
+         this.outdatedHealthAnimation.update(hp / max);
+      }
+
+      this.gappleAnimation.update(target.getAbsorptionAmount() / max);
+      float health = MathHelper.clamp(this.healthAnimation.getValue(), 0.0F, 1.0F);
+      float lost = MathHelper.clamp(this.outdatedHealthAnimation.getValue(), 0.0F, 1.0F);
+      float gold = MathHelper.clamp(this.gappleAnimation.getValue(), 0.0F, 1.0F);
+      // цвет здоровья: зелёный → жёлтый → красный
+      ColorRGBA low = new ColorRGBA(255, 70, 70);
+      ColorRGBA mid = new ColorRGBA(255, 200, 70);
+      ColorRGBA high = new ColorRGBA(90, 230, 130);
+      ColorRGBA hpColor = health < 0.5F ? low.mix(mid, health * 2.0F) : mid.mix(high, (health - 0.5F) * 2.0F);
+      m.push();
+      m.translate(posX + width / 2.0F, posY + height / 2.0F, 0.0F);
+      m.scale(scale, scale, 1.0F);
+      m.translate(-(posX + width / 2.0F), -(posY + height / 2.0F), 0.0F);
+      HudStyle.glass(m, posX, posY, width, height, BorderRadius.all(14.0F), a, true);
+      Identifier skin = null;
+
+      for (PlayerListEntry entry : mc.getNetworkHandler().getPlayerList()) {
+         if (entry.getProfile().getName().equals(target.getNameForScoreboard())) {
+            skin = entry.getSkinTextures().texture();
+         }
+      }
+
+      if (skin == null) {
+         skin = DefaultSkinHelper.getSteve().texture();
+      }
+
+      // голова в цветном кольце; кольцо краснеет вместе со здоровьем
+      float head = 26.0F;
+      float hx = posX + 7.0F;
+      float hy = posY + 7.0F;
+      DrawUtil.drawShadow(m, hx, hy, head, head, 10.0F, BorderRadius.all(head / 2.0F), hpColor.withAlpha(90.0F * a));
+      DrawUtil.drawRoundedRect(m, hx - 1.5F, hy - 1.5F, head + 3.0F, head + 3.0F, BorderRadius.all((head + 3.0F) / 2.0F), hpColor.withAlpha(230.0F * a));
+      DrawUtil.drawPlayerHeadWithRoundedShader(m, skin, hx, hy, head, BorderRadius.all(head / 2.0F), ColorRGBA.WHITE.withAlpha(a * 255.0F));
+      float tx = posX + 41.0F;
+      float right = posX + width - 9.0F;
+      String name = target == mc.player ? NameProtect.getCustomName() : target.getNameForScoreboard();
+      String hpText = String.format("%.1f", hp).replace(",", ".");
+      float hpW = Fonts.MEDIUM.getWidth(hpText, 8.5F);
+      MsdfRenderer.renderText(Fonts.MEDIUM, name, 8.0F, ColorRGBA.WHITE.withAlpha(a * 255.0F).getRGB(), m.peek().getPositionMatrix(), tx, posY + 8.5F, 0.0F, true, 0.85F, 1.0F, right - tx - hpW - 6.0F);
+      ctx.drawText(Fonts.MEDIUM.getFont(8.5F), hpText, right - hpW, posY + 8.0F, hpColor.mix(new ColorRGBA(255, 255, 255), 0.25F).withAlpha(255.0F * a));
+      String sub = target.getAbsorptionAmount() > 0.0F ? "HP  +" + String.format("%.1f", target.getAbsorptionAmount()).replace(",", ".") : "HP";
+      ctx.drawText(Fonts.REGULAR.getFont(6.0F), sub, tx, posY + 19.0F, new ColorRGBA(225, 228, 238, 170.0F * a));
+      // полоса здоровья: стеклянная дорожка, след урона, заливка цветом темы, золото поглощения
+      float bx = tx;
+      float by = posY + 28.0F;
+      float bw = right - tx;
+      float bh = 5.0F;
+      BorderRadius br = BorderRadius.all(bh / 2.0F);
+      DrawUtil.drawRoundedRect(m, bx, by, bw, bh, br, new ColorRGBA(255, 255, 255, 30.0F * a));
+      DrawUtil.drawRoundedRect(m, bx, by, Math.max(bh, bw * lost), bh, br, new ColorRGBA(255, 255, 255, 110.0F * a));
+      ColorRGBA f1 = theme.getColor().withAlpha(255.0F * a);
+      ColorRGBA f2 = theme.getSecondColor().mix(theme.getColor(), 0.4F).withAlpha(255.0F * a);
+      DrawUtil.drawRoundedRect(m, bx, by, Math.max(bh, bw * health), bh, br, tech.pain.utility.render.display.base.Gradient.of(f2, f2, f1, f1));
+      if (gold > 0.01F) {
+         DrawUtil.drawRoundedRect(m, bx, by, Math.max(bh, bw * Math.min(1.0F, gold)), bh, br, new ColorRGBA(255, 209, 0, 235.0F * a));
+      }
+
+      // блик по верхней кромке полосы
+      ColorRGBA shine = new ColorRGBA(255, 255, 255, 90.0F * a);
+      ColorRGBA none = new ColorRGBA(255, 255, 255, 0);
+      DrawUtil.drawRoundedRect(m, bx + 1.0F, by + 0.5F, Math.max(bh, bw * health) - 2.0F, bh * 0.45F, BorderRadius.top(bh / 2.0F, bh / 2.0F), tech.pain.utility.render.display.base.Gradient.of(shine, none, shine, none));
+      m.pop();
+      if (target instanceof PlayerEntity) {
+         this.drawArmor(ctx, (PlayerEntity)target, posX + 6.0F, posY - 13.0F, 0.0F, 0.0F, 0.0F);
+      }
+
+      this.width = width;
+      this.height = height;
+   }
+
    private void renderTargetHud(CustomDrawContext ctx, LivingEntity target, float animation) {
+      if (HudStyle.isGlass()) {
+         if (animation > 0.01F) {
+            this.renderGlass(ctx, target, animation);
+         }
+
+         return;
+      }
+
       float posX = this.x;
       float posY = this.y;
       float width = 86.0F;

@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pain Client</title>
+<meta name="description" content="Pain Client — клиент для Minecraft 1.21.4 на Fabric. Две версии: Pain Free и Pain Alpha.">
+<link rel="icon" href="favicon.png">
+<style>
+  :root {
+    --bg: #0a0a0a;
+    --panel: rgba(255, 255, 255, 0.04);
+    --panel-strong: rgba(255, 255, 255, 0.08);
+    --line: rgba(255, 255, 255, 0.11);
+    --text: #f2f2f2;
+    --muted: #9a9a9a;
+    --accent: #ffffff;
+    --ok: #cfcfcf;
+    --radius: 18px;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: inherit; text-decoration: none; }
+  .wrap { width: min(1080px, 100% - 32px); margin: 0 auto; }
+
+  header { position: sticky; top: 0; z-index: 5; backdrop-filter: blur(14px); background: rgba(10, 10, 10, 0.75); border-bottom: 1px solid var(--line); }
+  .bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; height: 60px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; letter-spacing: 0.2px; }
+  .brand img { width: 30px; height: 30px; }
+  nav { display: flex; gap: 22px; color: var(--muted); font-size: 15px; }
+  nav a:hover { color: var(--text); }
+
+  .hero { text-align: center; padding: 84px 0 56px; }
+  .hero img { width: 148px; height: auto; filter: drop-shadow(0 12px 40px rgba(0, 0, 0, 0.6)); }
+  h1 { font-size: clamp(40px, 8vw, 76px); line-height: 1.02; margin: 22px 0 14px; letter-spacing: -1.5px; }
+  h1 span { color: var(--muted); }
+  .lead { color: var(--muted); font-size: clamp(16px, 2.4vw, 20px); max-width: 640px; margin: 0 auto 30px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-bottom: 34px; }
+  .chip { border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 6px 14px; font-size: 14px; color: var(--muted); }
+  .actions { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
+  .btn { display: inline-flex; align-items: center; justify-content: center; min-height: 48px; padding: 0 26px; border-radius: 999px; font-weight: 600; border: 1px solid var(--line); background: var(--panel-strong); transition: transform .15s, background .15s; }
+  .btn:hover { transform: translateY(-2px); background: rgba(255, 255, 255, 0.13); }
+  .btn.primary { border: 0; background: #f2f2f2; color: #0a0a0a; }
+  .btn.primary:hover { background: #ffffff; }
+  .btn[aria-disabled="true"] { opacity: .55; pointer-events: none; }
+
+  section { padding: 56px 0; }
+  h2 { font-size: clamp(26px, 4.5vw, 38px); margin: 0 0 8px; letter-spacing: -0.5px; }
+  .sub { color: var(--muted); margin: 0 0 30px; }
+
+  .editions { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 18px; }
+  .card { position: relative; border: 1px solid var(--line); background: var(--panel); border-radius: var(--radius); padding: 26px; backdrop-filter: blur(10px); }
+  .card.alpha { border-color: rgba(255, 255, 255, 0.34); background: rgba(255, 255, 255, 0.07); }
+  .tag { display: inline-block; font-size: 12px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; padding: 4px 10px; border-radius: 999px; background: rgba(255, 255, 255, 0.09); color: var(--muted); }
+  .alpha .tag { background: #f2f2f2; color: #0a0a0a; }
+  .card h3 { font-size: 26px; margin: 14px 0 6px; }
+  .card p { color: var(--muted); margin: 0 0 16px; }
+  .card ul { list-style: none; padding: 0; margin: 0 0 22px; }
+  .card li { padding: 7px 0 7px 26px; position: relative; border-top: 1px solid rgba(255, 255, 255, 0.06); }
+  .card li:first-child { border-top: 0; }
+  .card li::before { content: ""; position: absolute; left: 4px; top: 15px; width: 9px; height: 9px; border-radius: 50%; background: #6a6a6a; }
+  .alpha li::before { background: #f2f2f2; }
+  .card .btn { width: 100%; }
+  .note { font-size: 13px; color: var(--muted); margin-top: 10px; text-align: center; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+  .feat { border: 1px solid var(--line); background: var(--panel); border-radius: var(--radius); padding: 20px; }
+  .feat h4 { margin: 0 0 6px; font-size: 17px; }
+  .feat p { margin: 0; color: var(--muted); font-size: 15px; }
+  .feat .k { font-size: 12px; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); font-weight: 700; display: block; margin-bottom: 8px; }
+
+  .steps { counter-reset: s; display: grid; gap: 12px; }
+  .step { counter-increment: s; display: flex; gap: 16px; align-items: flex-start; border: 1px solid var(--line); background: var(--panel); border-radius: var(--radius); padding: 18px 20px; }
+  .step::before { content: counter(s); flex: none; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; background: #f2f2f2; color: #0a0a0a; }
+  .step b { display: block; }
+  .step span { color: var(--muted); font-size: 15px; }
+  code { background: rgba(255, 255, 255, 0.09); border-radius: 6px; padding: 1px 7px; font-size: 14px; }
+
+  footer { border-top: 1px solid var(--line); padding: 28px 0 44px; color: var(--muted); font-size: 14px; }
+  footer .wrap { display: flex; flex-wrap: wrap; gap: 10px 24px; justify-content: space-between; }
+
+  @media (max-width: 560px) {
+    nav { display: none; }
+    .hero { padding-top: 54px; }
+    section { padding: 40px 0; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap bar">
+    <a class="brand" href="#top"><img src="logo.png" alt="">Pain Client</a>
+    <nav>
+      <a href="#editions">Версии</a>
+      <a href="#features">Возможности</a>
+      <a href="#install">Установка</a>
+      <a href="account.html">Аккаунт</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+  <div class="wrap hero">
+    <img src="logo.png" alt="Логотип Pain Client">
+    <h1>Pain <span>Client</span></h1>
+    <p class="lead">Клиент для Minecraft на Fabric: бой, движение, визуал и собственный интерфейс в стиле Liquid Glass.</p>
+    <div class="chips">
+      <span class="chip">Minecraft 1.21.4</span>
+      <span class="chip">Fabric</span>
+      <span class="chip">Linux и Windows</span>
+      <span class="chip">Версия 1.1</span>
+    </div>
+    <div class="actions">
+      <a class="btn primary" href="#editions">Выбрать версию</a>
+      <a class="btn" href="#features">Что внутри</a>
+    </div>
+  </div>
+
+  <section id="editions">
+    <div class="wrap">
+      <h2>Две версии</h2>
+      <p class="sub">Free — стабильная основа. Alpha — то же самое плюс новые функции, которые ещё обкатываются.</p>
+      <div class="editions">
+        <article class="card">
+          <span class="tag">Бесплатно</span>
+          <h3>Pain Free</h3>
+          <p>Проверенный набор модулей и весь интерфейс клиента.</p>
+          <ul>
+            <li>ClickGUI и HUD в стилях Cool и Liquid Glass</li>
+            <li>Aura, AutoTotem, Criticals</li>
+            <li>Speed, AutoSprint, NoSlow</li>
+            <li>ESP, Tracers, Nametags, TargetESP</li>
+            <li>Свои темы и цвета, главное меню с обоями</li>
+          </ul>
+          <a class="btn" href="account.html">Получить Free</a>
+          <div class="note">Нужен аккаунт — он бесплатный.</div>
+        </article>
+        <article class="card alpha">
+          <span class="tag">Ранний доступ</span>
+          <h3>Pain Alpha</h3>
+          <p>Всё из Free и функции, которые появляются первыми.</p>
+          <ul>
+            <li>Scaffold с режимами GodBridge, Expand и Custom</li>
+            <li>Настраиваемые ротации в Aura и CrystalAura</li>
+            <li>Speed Custom с кривыми разгона</li>
+            <li>ElytraTarget, BaseFinder, ChestSorter</li>
+            <li>Эффекты удара и прыжка, FireChams, Thunder</li>
+            <li>Текст песен в HUD и питомцы</li>
+          </ul>
+          <a class="btn primary" href="account.html">Войти и ввести ключ</a>
+          <div class="note">Доступ открывается ключом в аккаунте.</div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section id="features">
+    <div class="wrap">
+      <h2>Возможности</h2>
+      <p class="sub">Больше 80 модулей. Коротко о главном.</p>
+      <div class="grid">
+        <div class="feat"><span class="k">Бой</span><h4>Aura и ротации</h4><p>Несколько готовых ротаций и режим Custom: скорость, кривая разгона, дрожание, паузы — около 30 настроек.</p></div>
+        <div class="feat"><span class="k">Движение</span><h4>Scaffold и Speed</h4><p>Мост под ногами в пяти режимах и скорость с собственным алгоритмом: от BHop до полностью своего.</p></div>
+        <div class="feat"><span class="k">Мир</span><h4>ESP для блоков и хранилищ</h4><p>Руды, обломки, спавнеры, сундуки и шалкеры сквозь стены, каждый тип своим цветом.</p></div>
+        <div class="feat"><span class="k">Визуал</span><h4>Эффекты</h4><p>Искажение и торнадо при ударе, кубы и кольца при прыжке, горящий предмет в руке, размытие в движении.</p></div>
+        <div class="feat"><span class="k">Атмосфера</span><h4>Небо, погода, гроза</h4><p>Свои скайбоксы, снежинки и листопад, гроза с молниями в такт раскатам грома.</p></div>
+        <div class="feat"><span class="k">Интерфейс</span><h4>Liquid Glass</h4><p>Стеклянный ClickGUI, HUD, Dynamic Island вместо ватермарки и 3D-меню прямо в мире.</p></div>
+        <div class="feat"><span class="k">Музыка</span><h4>Текст песни в HUD</h4><p>Синхронный текст играющего трека, перевод и распознавание со звука, если текста в базе нет.</p></div>
+        <div class="feat"><span class="k">Удобства</span><h4>Мелочи, которые экономят время</h4><p>Сортировка сундуков, поиск баз в туннеле, менеджер аккаунтов, спамер из файла.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="install">
+    <div class="wrap">
+      <h2>Установка</h2>
+      <p class="sub">Нужны Minecraft 1.21.4 и Fabric Loader.</p>
+      <div class="steps">
+        <div class="step"><div><b>Создай аккаунт</b><span>На странице <a href="account.html"><u>Аккаунт</u></a>. Он один для сайта и лоадера.</span></div></div>
+        <div class="step"><div><b>Поставь Fabric для 1.21.4</b><span>Через любой лаунчер, который умеет создавать сборки с Fabric.</span></div></div>
+        <div class="step"><div><b>Добавь Fabric API</b><span>Без него клиент не запустится. Файл кладётся в папку <code>mods</code>.</span></div></div>
+        <div class="step"><div><b>Запусти лоадер</b><span>Он войдёт в аккаунт, сам найдёт папку <code>mods</code>, скачает твою версию и проверит файл. <a href="pain-loader-linux" download><u>Скачать лоадер для Linux</u></a> · для Windows — скоро. Без лоадера файл можно взять в аккаунте.</span></div></div>
+        <div class="step"><div><b>Запусти игру</b><span>Меню клиента открывается клавишей <code>Right Shift</code>.</span></div></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>Pain Client · автор ItzSkater</span>
+    <span>Используй только там, где это разрешено правилами сервера. Не связан с Mojang и Microsoft.</span>
+  </div>
+</footer>
+
+</body>
+</html>

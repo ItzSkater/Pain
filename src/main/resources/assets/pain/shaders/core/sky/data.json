@@ -1,0 +1,16 @@
+{
+    "vertex": "pain:core/sky/vertex",
+    "fragment": "pain:core/sky/fragment",
+    "samplers": [],
+    "uniforms": [
+        { "name": "ModelViewMat", "type": "matrix4x4", "count": 16, "values": [ 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0 ] },
+        { "name": "ProjMat", "type": "matrix4x4", "count": 16, "values": [ 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0 ] },
+        { "name": "SunDir", "type": "float", "count": 3, "values": [ 0.0, 1.0, 0.0 ] },
+        { "name": "Time", "type": "float", "count": 1, "values": [ 0.0 ] },
+        { "name": "Rain", "type": "float", "count": 1, "values": [ 0.0 ] },
+        { "name": "Clouds", "type": "float", "count": 1, "values": [ 0.5 ] },
+        { "name": "Flash", "type": "float", "count": 1, "values": [ 0.0 ] },
+        { "name": "Bolt", "type": "float", "count": 3, "values": [ 0.0, 0.0, 0.0 ] },
+        { "name": "Steps", "type": "float", "count": 1, "values": [ 16.0 ] }
+    ]
+}

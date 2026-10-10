@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Аккаунт · Pain Client</title>
+<link rel="icon" href="favicon.png">
+<style>
+  :root { --bg:#0a0a0a; --panel:rgba(255,255,255,.045); --line:rgba(255,255,255,.12); --text:#f2f2f2; --muted:#9a9a9a; --ok:#d6d6d6; --bad:#ff7b7b; }
+  * { box-sizing: border-box; }
+  body { margin:0; min-height:100vh; background:var(--bg);
+    color:var(--text); font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans",sans-serif; }
+  a { color:inherit; }
+  .wrap { width:min(460px, 100% - 32px); margin:0 auto; padding:40px 0 60px; }
+  .brand { display:flex; align-items:center; gap:10px; font-weight:700; text-decoration:none; margin-bottom:26px; }
+  .brand img { width:32px; height:32px; }
+  .card { border:1px solid var(--line); background:var(--panel); border-radius:18px; padding:24px; backdrop-filter:blur(10px); margin-bottom:16px; }
+  h1 { font-size:26px; margin:0 0 4px; }
+  h2 { font-size:18px; margin:0 0 12px; }
+  p { color:var(--muted); margin:0 0 16px; }
+  .tabs { display:flex; gap:6px; background:rgba(255,255,255,.06); border-radius:999px; padding:4px; margin-bottom:18px; }
+  .tabs button { flex:1; min-height:38px; border:0; border-radius:999px; background:transparent; color:var(--muted); font:inherit; font-weight:600; cursor:pointer; }
+  .tabs button[aria-selected="true"] { background:rgba(255,255,255,.14); color:var(--text); }
+  label { display:block; font-size:14px; color:var(--muted); margin:12px 0 6px; }
+  input { width:100%; min-height:46px; padding:0 14px; border-radius:12px; border:1px solid var(--line); background:rgba(0,0,0,.35); color:var(--text); font:inherit; }
+  input:focus { outline:2px solid #f2f2f2; outline-offset:1px; }
+  .btn { display:inline-flex; align-items:center; justify-content:center; width:100%; min-height:48px; margin-top:16px; border-radius:999px; border:1px solid var(--line); background:rgba(255,255,255,.09); color:var(--text); font:inherit; font-weight:600; cursor:pointer; text-decoration:none; }
+  .btn.primary { border:0; background:#f2f2f2; color:#0a0a0a; }
+  .btn:disabled, .btn[aria-disabled="true"] { opacity:.5; cursor:default; pointer-events:none; }
+  .msg { min-height:22px; margin-top:12px; font-size:14px; }
+  .msg.bad { color:var(--bad); }
+  .msg.ok { color:var(--ok); }
+  .row { display:flex; justify-content:space-between; gap:12px; padding:9px 0; border-top:1px solid rgba(255,255,255,.07); }
+  .row:first-of-type { border-top:0; }
+  .row span:first-child { color:var(--muted); }
+  .pill { font-size:12px; font-weight:700; letter-spacing:1px; text-transform:uppercase; padding:3px 10px; border-radius:999px; background:rgba(255,255,255,.1); color:var(--muted); }
+  .pill.alpha { background:#f2f2f2; color:#0a0a0a; }
+  .hint { font-size:13px; color:var(--muted); margin-top:10px; }
+  [hidden] { display:none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="brand" href="/"><img src="logo.png" alt="">Pain Client</a>
+
+  <!-- вход и регистрация -->
+  <div class="card" id="auth">
+    <h1>Аккаунт</h1>
+    <p>Один аккаунт для сайта и лоадера.</p>
+    <div class="tabs" role="tablist">
+      <button type="button" role="tab" id="tab-login" aria-selected="true">Вход</button>
+      <button type="button" role="tab" id="tab-register" aria-selected="false">Регистрация</button>
+    </div>
+    <form id="auth-form">
+      <label for="username">Ник</label>
+      <input id="username" autocomplete="username" maxlength="16" required>
+      <label for="password">Пароль</label>
+      <input id="password" type="password" autocomplete="current-password" maxlength="128" required>
+      <div id="repeat-box" hidden>
+        <label for="repeat">Пароль ещё раз</label>
+        <input id="repeat" type="password" autocomplete="new-password" maxlength="128">
+      </div>
+      <button class="btn primary" id="auth-submit">Войти</button>
+      <div class="msg" id="auth-msg" role="status"></div>
+    </form>
+    <div class="hint" id="register-hint" hidden>Ник: 3–16 символов, латиница, цифры и «_». Пароль — от 8 символов. Не используй пароль от других сайтов.</div>
+  </div>
+
+  <!-- кабинет -->
+  <div id="cabinet" hidden>
+    <div class="card">
+      <h1 id="hello">Привет</h1>
+      <div class="row"><span>Версия</span><span class="pill" id="role-pill">Free</span></div>
+      <div class="row"><span>Аккаунт создан</span><span id="created">—</span></div>
+      <button class="btn" id="logout" type="button">Выйти</button>
+    </div>
+
+    <div class="card" id="redeem-card">
+      <h2>Ключ Alpha</h2>
+      <p>Есть ключ? Введи его, и аккаунт получит доступ к Pain Alpha.</p>
+      <form id="redeem-form">
+        <input id="key" placeholder="PAIN-XXXXX-XXXXX-XXXXX" maxlength="64" autocomplete="off" required>
+        <button class="btn primary">Активировать</button>
+        <div class="msg" id="redeem-msg" role="status"></div>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>Скачать</h2>
+      <p>Удобнее через лоадер: он сам ставит и обновляет клиент. Здесь — файл напрямую.</p>
+      <button class="btn" id="dl-free" type="button">Pain Free</button>
+      <button class="btn primary" id="dl-alpha" type="button">Pain Alpha</button>
+      <div class="msg" id="dl-msg" role="status"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const TOKEN_KEY = "pain_token";
+  let mode = "login";
+  let builds = {};
+
+  const token = () => { try { return localStorage.getItem(TOKEN_KEY); } catch { return null; } };
+  const setToken = (t) => { try { t ? localStorage.setItem(TOKEN_KEY, t) : localStorage.removeItem(TOKEN_KEY); } catch {} };
+
+  async function api(path, body) {
+    const headers = {};
+    if (body) headers["Content-Type"] = "application/json";
+    if (token()) headers["Authorization"] = "Bearer " + token();
+    let res;
+    try {
+      res = await fetch(path, { method: body ? "POST" : "GET", headers, body: body ? JSON.stringify(body) : undefined });
+    } catch {
+      return { ok: false, error: "Сервер не отвечает. Попробуй ещё раз." };
+    }
+    try { return await res.json(); } catch { return { ok: false, error: "Сервер ответил ошибкой " + res.status }; }
+  }
+
+  function say(el, text, good) {
+    el.textContent = text || "";
+    el.className = "msg" + (text ? (good ? " ok" : " bad") : "");
+  }
+
+  function setMode(next) {
+    mode = next;
+    const reg = mode === "register";
+    $("tab-login").setAttribute("aria-selected", String(!reg));
+    $("tab-register").setAttribute("aria-selected", String(reg));
+    $("repeat-box").hidden = !reg;
+    $("register-hint").hidden = !reg;
+    $("repeat").required = reg;
+    $("password").autocomplete = reg ? "new-password" : "current-password";
+    $("auth-submit").textContent = reg ? "Создать аккаунт" : "Войти";
+    say($("auth-msg"), "");
+  }
+
+  function size(bytes) { return (bytes / 1048576).toFixed(1) + " МБ"; }
+
+  function show(user) {
+    $("auth").hidden = !!user;
+    $("cabinet").hidden = !user;
+    if (!user) return;
+    $("hello").textContent = "Привет, " + user.username;
+    const pill = $("role-pill");
+    pill.textContent = user.role === "admin" ? "Admin" : (user.alpha ? "Alpha" : "Free");
+    pill.className = "pill" + (user.alpha ? " alpha" : "");
+    $("created").textContent = new Date(user.created * 1000).toLocaleDateString("ru-RU");
+    $("redeem-card").hidden = user.alpha;
+    for (const edition of ["free", "alpha"]) {
+      const button = $("dl-" + edition);
+      const build = builds[edition];
+      const name = edition === "free" ? "Pain Free" : "Pain Alpha";
+      if (!build) {
+        button.textContent = name + " — сборка ещё не выложена";
+        button.disabled = true;
+      } else if (edition === "alpha" && !user.alpha) {
+        button.textContent = name + " — нужен ключ";
+        button.disabled = true;
+      } else {
+        button.textContent = name + " " + build.version + " · " + size(build.size);
+        button.disabled = false;
+      }
+    }
+  }
+
+  async function download(edition) {
+    const msg = $("dl-msg");
+    say(msg, "Скачиваю…", true);
+    let res;
+    try {
+      res = await fetch("/api/download/" + edition, { headers: { Authorization: "Bearer " + token() } });
+    } catch {
+      return say(msg, "Сервер не отвечает. Попробуй ещё раз.");
+    }
+    if (!res.ok) {
+      let error = "Не удалось скачать";
+      try { error = (await res.json()).error || error; } catch {}
+      return say(msg, error);
+    }
+    const blob = await res.blob();
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "Pain-" + (edition === "free" ? "Free" : "Alpha") + "-" + (builds[edition] ? builds[edition].version : "") + ".jar";
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(link.href), 60000);
+    say(msg, "Готово. Положи файл в папку mods.", true);
+  }
+
+  $("tab-login").addEventListener("click", () => setMode("login"));
+  $("tab-register").addEventListener("click", () => setMode("register"));
+
+  $("auth-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const msg = $("auth-msg");
+    const username = $("username").value.trim();
+    const password = $("password").value;
+    if (mode === "register" && password !== $("repeat").value) return say(msg, "Пароли не совпадают");
+    $("auth-submit").disabled = true;
+    const res = await api(mode === "register" ? "/api/register" : "/api/login", { username, password });
+    $("auth-submit").disabled = false;
+    if (!res.ok) return say(msg, res.error);
+    setToken(res.token);
+    $("password").value = "";
+    $("repeat").value = "";
+    show(res.user);
+  });
+
+  $("redeem-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const res = await api("/api/redeem", { key: $("key").value.trim() });
+    if (!res.ok) return say($("redeem-msg"), res.error);
+    $("key").value = "";
+    show(res.user);
+  });
+
+  $("logout").addEventListener("click", async () => {
+    await api("/api/logout", {});
+    setToken(null);
+    show(null);
+  });
+
+  $("dl-free").addEventListener("click", () => download("free"));
+  $("dl-alpha").addEventListener("click", () => download("alpha"));
+
+  (async () => {
+    const info = await api("/api/builds");
+    if (info.ok) builds = info.builds;
+    if (!token()) return show(null);
+    const me = await api("/api/me");
+    if (!me.ok) { setToken(null); return show(null); }
+    show(me.user);
+  })();
+})();
+</script>
+</body>
+</html>

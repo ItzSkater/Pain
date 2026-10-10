@@ -58,7 +58,22 @@ public abstract class MinecraftClientMixin {
    private Screen mixin$modifySetScreenArg(Screen original) {
       EventSetScreen event = new EventSetScreen(original);
       EventManager.call(event);
-      return event.getScreen();
+      Screen result = event.getScreen();
+      // своё главное меню вместо ванильного (отключается в модуле CoolInterface)
+      if (result instanceof net.minecraft.client.gui.screen.TitleScreen && tech.pain.client.modules.impl.render.CoolInterface.INSTANCE.titleEnabled()) {
+         return new tech.pain.client.screens.title.PainTitleScreen();
+      }
+
+      // свой список серверов вместо ванильного; кнопка «обычный список» пропускает подмену один раз
+      if (result instanceof net.minecraft.client.gui.screen.multiplayer.MultiplayerScreen) {
+         if (tech.pain.client.screens.servers.PainServersScreen.vanillaOnce) {
+            tech.pain.client.screens.servers.PainServersScreen.vanillaOnce = false;
+         } else if (tech.pain.client.modules.impl.render.CoolInterface.INSTANCE.serversEnabled()) {
+            return new tech.pain.client.screens.servers.PainServersScreen(new net.minecraft.client.gui.screen.TitleScreen());
+         }
+      }
+
+      return result;
    }
 
    @Inject(

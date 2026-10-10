@@ -1,0 +1,18 @@
+name: Question
+about: Ask a question about the shader.
+ref: 'main'
+labels:
+  - question
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to fill out this question!
+  - type: textarea
+    id: question
+    attributes:
+      label: Your question
+      description: You can attach an image here when you click the text box.
+      placeholder: Ask your question here.
+    validations:
+      required: true

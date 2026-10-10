@@ -30,21 +30,55 @@ public final class HudStyle {
       return Interface.INSTANCE != null && Interface.INSTANCE.style.is("Liquid Glass");
    }
 
-   /** Liquid Glass: сильный блюр, полупрозрачное «стекло», блик сверху и яркий светлый обод. */
+   /** Liquid Glass для панелей HUD. */
    public static void glassPanel(MatrixStack matrices, float x, float y, float width, float height, float alpha) {
-      BorderRadius radius = BorderRadius.all(Math.min(8.0F, height / 2.0F));
-      DrawUtil.drawShadow(matrices, x, y, width, height, 14.0F, radius, new ColorRGBA(0, 0, 0, 70.0F * alpha));
-      DrawUtil.drawBlur(matrices, x, y, width, height, 18.0F, radius, new ColorRGBA(255, 255, 255, 255.0F * alpha));
-      // лёгкое затемнение, чтобы белый текст читался на светлом фоне, и белёсый тон стекла
-      DrawUtil.drawRoundedRect(matrices, x, y, width, height, radius, new ColorRGBA(24, 28, 38, 72.0F * alpha));
-      DrawUtil.drawRoundedRect(matrices, x, y, width, height, radius, new ColorRGBA(255, 255, 255, 22.0F * alpha));
-      ColorRGBA hi = new ColorRGBA(255, 255, 255, 50.0F * alpha);
+      glass(matrices, x, y, width, height, BorderRadius.all(Math.min(8.0F, height / 2.0F)), alpha, true);
+   }
+
+   /**
+    * Стекло двух видов (модуль CoolInterface):
+    * матовое — фон сильно размыт, плотная молочная заливка, мягкий блик;
+    * глянцевое — почти прозрачное, фон едва размыт, резкий блик сверху, яркий обод и отсвет снизу.
+    * @param blur размывать ли фон (для мелких кнопок меню игры выключено — иначе дорого)
+    */
+   public static void glass(MatrixStack matrices, float x, float y, float width, float height, BorderRadius radius, float alpha, boolean blur) {
+      if (alpha <= 0.01F || width <= 0.0F || height <= 0.0F) {
+         return;
+      }
+
+      tech.pain.client.modules.impl.render.CoolInterface cool = tech.pain.client.modules.impl.render.CoolInterface.INSTANCE;
+      boolean glossy = cool.glossy();
+      float d = cool.density();
+      DrawUtil.drawShadow(matrices, x, y, width, height, glossy ? 10.0F : 14.0F, radius, new ColorRGBA(0, 0, 0, (glossy ? 45.0F : 70.0F) * alpha));
+      if (blur) {
+         DrawUtil.drawBlur(matrices, x, y, width, height, glossy ? 3.0F : 20.0F, radius, new ColorRGBA(255, 255, 255, 255.0F * alpha));
+      }
+
       ColorRGBA clear = new ColorRGBA(255, 255, 255, 0);
-      DrawUtil.drawRoundedRect(matrices, x + 0.75F, y + 0.5F, width - 1.5F, Math.min(height * 0.5F, 9.0F), BorderRadius.top(radius.topLeftRadius(), radius.topRightRadius()), Gradient.of(hi, clear, hi, clear));
-      ColorRGBA low = new ColorRGBA(255, 255, 255, 16.0F * alpha);
-      float lowH = Math.min(height * 0.3F, 5.0F);
-      DrawUtil.drawRoundedRect(matrices, x + 0.75F, y + height - lowH - 0.5F, width - 1.5F, lowH, BorderRadius.bottom(radius.bottomLeftRadius(), radius.bottomRightRadius()), Gradient.of(clear, low, clear, low));
-      DrawUtil.drawRoundedBorder(matrices, x, y, width, height, -0.5F, radius, new ColorRGBA(255, 255, 255, 100.0F * alpha));
+      if (glossy) {
+         // прозрачное стекло: лёгкая тень для читаемости текста и едва заметный холодный тон
+         DrawUtil.drawRoundedRect(matrices, x, y, width, height, radius, new ColorRGBA(16, 20, 30, (18.0F + 90.0F * d) * alpha));
+         DrawUtil.drawRoundedRect(matrices, x, y, width, height, radius, new ColorRGBA(210, 225, 255, 9.0F * alpha));
+         // резкий блик: яркая полоса у верхней кромки и широкий мягкий отсвет под ней
+         ColorRGBA edge = new ColorRGBA(255, 255, 255, 120.0F * alpha);
+         DrawUtil.drawRoundedRect(matrices, x + 1.0F, y + 0.5F, width - 2.0F, Math.min(height * 0.18F, 2.5F), BorderRadius.top(radius.topLeftRadius(), radius.topRightRadius()), Gradient.of(edge, clear, edge, clear));
+         ColorRGBA sheen = new ColorRGBA(255, 255, 255, 30.0F * alpha);
+         DrawUtil.drawRoundedRect(matrices, x + 0.75F, y + 0.5F, width - 1.5F, Math.min(height * 0.55F, 14.0F), BorderRadius.top(radius.topLeftRadius(), radius.topRightRadius()), Gradient.of(sheen, clear, sheen, clear));
+         ColorRGBA low = new ColorRGBA(255, 255, 255, 34.0F * alpha);
+         float lowH = Math.min(height * 0.3F, 6.0F);
+         DrawUtil.drawRoundedRect(matrices, x + 0.75F, y + height - lowH - 0.5F, width - 1.5F, lowH, BorderRadius.bottom(radius.bottomLeftRadius(), radius.bottomRightRadius()), Gradient.of(clear, low, clear, low));
+         DrawUtil.drawRoundedBorder(matrices, x, y, width, height, -0.5F, radius, new ColorRGBA(255, 255, 255, 150.0F * alpha));
+      } else {
+         // матовое стекло: плотнее и «молочнее», блик мягкий
+         DrawUtil.drawRoundedRect(matrices, x, y, width, height, radius, new ColorRGBA(24, 28, 38, (35.0F + 110.0F * d) * alpha));
+         DrawUtil.drawRoundedRect(matrices, x, y, width, height, radius, new ColorRGBA(255, 255, 255, (16.0F + 16.0F * d) * alpha));
+         ColorRGBA hi = new ColorRGBA(255, 255, 255, 42.0F * alpha);
+         DrawUtil.drawRoundedRect(matrices, x + 0.75F, y + 0.5F, width - 1.5F, Math.min(height * 0.5F, 9.0F), BorderRadius.top(radius.topLeftRadius(), radius.topRightRadius()), Gradient.of(hi, clear, hi, clear));
+         ColorRGBA low = new ColorRGBA(255, 255, 255, 14.0F * alpha);
+         float lowH = Math.min(height * 0.3F, 5.0F);
+         DrawUtil.drawRoundedRect(matrices, x + 0.75F, y + height - lowH - 0.5F, width - 1.5F, lowH, BorderRadius.bottom(radius.bottomLeftRadius(), radius.bottomRightRadius()), Gradient.of(clear, low, clear, low));
+         DrawUtil.drawRoundedBorder(matrices, x, y, width, height, -0.5F, radius, new ColorRGBA(255, 255, 255, 90.0F * alpha));
+      }
    }
 
    /** Панель Cool: блюр + тёмная заливка, крупное скругление, тонкий светлый обод. */

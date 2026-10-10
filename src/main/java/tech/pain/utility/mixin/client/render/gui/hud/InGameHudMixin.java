@@ -130,4 +130,12 @@ public abstract class InGameHudMixin {
 
       return original;
    }
+
+   @Inject(method = {"renderOverlay"}, at = {@At("HEAD")}, cancellable = true)
+   private void painHidePumpkin(DrawContext context, net.minecraft.util.Identifier texture, float opacity, CallbackInfo ci) {
+      // затемнение экрана от тыквы на голове
+      if (texture.getPath().contains("pumpkinblur") && tech.pain.client.modules.impl.render.NoRender.INSTANCE.isRemovePumpkin()) {
+         ci.cancel();
+      }
+   }
 }

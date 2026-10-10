@@ -15,3 +15,15 @@
 .DS_Store
 __pycache__/
 *.pyc
+/tools/mcp-server/node_modules/
+/tools/mcp-server/dist/
+/tools/mcp-server/.test-build/
+/site/data/
+/site/builds/
+/loader/target/
+/launcher/target/
+
+# шейдерпак: в репозитории только исходники форка, без скачанных архивов
+/shaderpack/mellow-src/
+/shaderpack/*.zip
+/site/data/

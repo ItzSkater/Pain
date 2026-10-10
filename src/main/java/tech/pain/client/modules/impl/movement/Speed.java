@@ -16,12 +16,52 @@ import tech.pain.utility.game.player.MovingUtil;
 @ModuleAnnotation(
    name = "Speed",
    category = Category.MOVEMENT,
-   description = "Ускоряет передвижение (порт из Race)"
+   description = "Ускоряет передвижение: готовые режимы и Custom — свой алгоритм с кривой разгона"
 )
 public class Speed extends Module {
    public static final Speed INSTANCE = new Speed();
 
-   private final ModeSetting mode = new ModeSetting("Мод", "NCP", "StrictStrafe", "MatrixDamage");
+   private final ModeSetting mode = tech.pain.Edition.ALPHA ? new ModeSetting("Мод", "NCP", "StrictStrafe", "MatrixDamage", "Custom") : new ModeSetting("Мод", "NCP", "StrictStrafe", "MatrixDamage");
+   // --- Custom: свой алгоритм, настраивается всё ---
+   private final ModeSetting algorithm = new ModeSetting("Алгоритм", () -> this.mode.is("Custom"), "BHop", "Low Hop", "Y-Port", "Ground", "Strafe");
+   // скорость
+   private final ModeSetting speedSource = new ModeSetting("Скорость", () -> this.mode.is("Custom"), "По кривой", "Своя текущая");
+   private final NumberSetting minSpeed = new NumberSetting("Скорость от (x)", 1.0F, 0.2F, 5.0F, 0.05F, () -> this.byCurve());
+   private final NumberSetting maxSpeed = new NumberSetting("Скорость до (x)", 1.6F, 0.2F, 5.0F, 0.05F, () -> this.byCurve());
+   private final ModeSetting curve = new ModeSetting("Интерполяция", () -> this.byCurve(), "Кубическая", "Синусоидная", "Линейная", "Нет");
+   private final NumberSetting rampTicks = new NumberSetting("Длина разгона (тики)", 12.0F, 2.0F, 80.0F, 1.0F, () -> this.byCurve() && !this.curve.is("Нет"));
+   private final ModeSetting rampMode = new ModeSetting("Ход кривой", () -> this.byCurve() && !this.curve.is("Нет"), "Разгон и удержание", "Туда-обратно", "С каждого прыжка");
+   private final NumberSetting ownSpeedMult = new NumberSetting("Множитель своей скорости", 1.0F, 0.5F, 3.0F, 0.01F, () -> this.mode.is("Custom") && this.speedSource.is("Своя текущая"));
+   private final NumberSetting groundMult = new NumberSetting("На земле (x)", 1.0F, 0.2F, 3.0F, 0.05F, () -> this.mode.is("Custom"));
+   private final NumberSetting airMult = new NumberSetting("В воздухе (x)", 1.0F, 0.2F, 3.0F, 0.05F, () -> this.mode.is("Custom"));
+   private final NumberSetting sideMult = new NumberSetting("Вбок (x)", 1.0F, 0.2F, 1.5F, 0.05F, () -> this.mode.is("Custom"));
+   private final NumberSetting backMult = new NumberSetting("Назад (x)", 1.0F, 0.2F, 1.5F, 0.05F, () -> this.mode.is("Custom"));
+   private final NumberSetting speedCap = new NumberSetting("Предел скорости (блоков/сек, 0 — нет)", 0.0F, 0.0F, 40.0F, 0.5F, () -> this.mode.is("Custom"));
+   // стрейф — управление направлением
+   private final NumberSetting strafeGround = new NumberSetting("Сила стрейфа на земле", 1.0F, 0.0F, 1.0F, 0.05F, () -> this.mode.is("Custom"));
+   private final NumberSetting strafeAir = new NumberSetting("Сила стрейфа в воздухе", 1.0F, 0.0F, 1.0F, 0.05F, () -> this.mode.is("Custom"));
+   private final NumberSetting strafeTurn = new NumberSetting("Макс. поворот за тик (°, 180 — без ограничения)", 180.0F, 5.0F, 180.0F, 5.0F, () -> this.mode.is("Custom"));
+   private final BooleanSetting strafeOnlyAir = new BooleanSetting("Стрейфить только в воздухе", false, () -> this.mode.is("Custom"));
+   // прыжок
+   private final NumberSetting jumpHeight = new NumberSetting("Высота прыжка", 0.42F, 0.05F, 1.0F, 0.01F, () -> this.jumps());
+   private final NumberSetting jumpBoost = new NumberSetting("Буст скорости при прыжке (x)", 1.0F, 1.0F, 3.0F, 0.05F, () -> this.jumps());
+   private final NumberSetting groundTicksBeforeJump = new NumberSetting("Тики на земле перед прыжком", 0.0F, 0.0F, 10.0F, 1.0F, () -> this.jumps());
+   private final BooleanSetting jumpOnlyWithKey = new BooleanSetting("Прыгать только с зажатым пробелом", false, () -> this.jumps());
+   // воздух и падение
+   private final NumberSetting airKeep = new NumberSetting("Сохранение скорости в воздухе", 1.0F, 0.8F, 1.0F, 0.005F, () -> this.mode.is("Custom") && !this.algorithm.is("Ground"));
+   private final NumberSetting fallBoost = new NumberSetting("Ускорение падения", 1.0F, 1.0F, 3.0F, 0.05F, () -> this.mode.is("Custom") && !this.algorithm.is("Ground"));
+   private final NumberSetting yPortDown = new NumberSetting("Y-Port: скорость вниз", 0.42F, 0.1F, 1.5F, 0.02F, () -> this.mode.is("Custom") && this.algorithm.is("Y-Port"));
+   // урон
+   private final NumberSetting hurtBoost = new NumberSetting("Буст при получении урона (x)", 1.0F, 1.0F, 4.0F, 0.05F, () -> this.mode.is("Custom"));
+   private final BooleanSetting pauseOnHurt = new BooleanSetting("Пауза при получении урона", false, () -> this.mode.is("Custom"));
+   // условия
+   private final BooleanSetting onlySprint = new BooleanSetting("Только при беге", false, () -> this.mode.is("Custom"));
+   private final BooleanSetting forceSprint = new BooleanSetting("Сам включает бег", true, () -> this.mode.is("Custom"));
+   private final BooleanSetting resetOnWall = new BooleanSetting("Сброс разгона при ударе о стену", true, () -> this.byCurve() && !this.curve.is("Нет"));
+   private final BooleanSetting stopInstantly = new BooleanSetting("Мгновенная остановка", true, () -> this.mode.is("Custom"));
+   private int customTicks;
+   private int groundTicks;
+   private double customSpeed;
    private final BooleanSetting pauseInLiquids = new BooleanSetting("Пауза в воде", false);
    private final BooleanSetting pauseWhileSneaking = new BooleanSetting("Пауза при шифте", false);
    private final NumberSetting hurttime = new NumberSetting("HurtTime", 0.0F, 0.0F, 10.0F, 1.0F, () -> this.mode.is("MatrixDamage"));
@@ -32,6 +72,7 @@ public class Speed extends Module {
    private int ticks = 0;
    private double baseSpeed = 0.2873D;
    private float prevForward = 0.0F;
+   private int airTicks;
 
    private Speed() {
    }
@@ -41,6 +82,176 @@ public class Speed extends Module {
       this.stage = 1;
       this.ticks = 0;
       this.baseSpeed = 0.2873D;
+      this.customTicks = 0;
+      this.customSpeed = 0.0D;
+   }
+
+   /** Кривая разгона: t от 0 до 1 → доля пути от «Скорость от» до «Скорость до». */
+   private double ease(double t) {
+      t = Math.max(0.0D, Math.min(1.0D, t));
+      if (this.curve.is("Кубическая")) {
+         // плавный старт, быстрый средний участок, плавный выход на максимум
+         return t < 0.5D ? 4.0D * t * t * t : 1.0D - Math.pow(-2.0D * t + 2.0D, 3.0D) / 2.0D;
+      } else if (this.curve.is("Синусоидная")) {
+         return 0.5D - 0.5D * Math.cos(Math.PI * t);
+      } else {
+         return this.curve.is("Нет") ? 1.0D : t;
+      }
+   }
+
+   private boolean byCurve() {
+      return this.mode.is("Custom") && this.speedSource.is("По кривой");
+   }
+
+   private boolean jumps() {
+      return this.mode.is("Custom") && (this.algorithm.is("BHop") || this.algorithm.is("Low Hop") || this.algorithm.is("Y-Port"));
+   }
+
+   /**
+    * Свой алгоритм. Величина скорости — по кривой между «от» и «до» или своя текущая, с множителями для земли,
+    * воздуха, движения вбок и назад. Направление — стрейф: насколько быстро вектор движения поворачивается
+    * к нажатым клавишам. Прыжок, падение и реакция на урон — по своим настройкам.
+    */
+   private void customMove(EventMove event) {
+      if (mc.player.getAbilities().flying || mc.player.isGliding()) {
+         return;
+      }
+
+      double moveY = event.getMovePos().y;
+      if (!MovingUtil.hasPlayerMovement()) {
+         this.customTicks = 0;
+         this.customSpeed = 0.0D;
+         if (this.stopInstantly.isEnabled()) {
+            event.setMovePos(new Vec3d(0.0D, moveY, 0.0D));
+         }
+
+         return;
+      }
+
+      if (this.forceSprint.isEnabled() && mc.player.input.movementForward > 0.0F && mc.player.getHungerManager().getFoodLevel() > 6) {
+         mc.player.setSprinting(true);
+      }
+
+      if (this.onlySprint.isEnabled() && !mc.player.isSprinting() || this.pauseOnHurt.isEnabled() && mc.player.hurtTime > 0) {
+         return;
+      }
+
+      boolean ground = mc.player.isOnGround();
+      this.groundTicks = ground ? this.groundTicks + 1 : 0;
+      boolean hops = this.jumps();
+      boolean jumped = false;
+      if (hops && ground && !mc.player.horizontalCollision && (float)this.groundTicks > this.groundTicksBeforeJump.getCurrent()
+         && (!this.jumpOnlyWithKey.isEnabled() || mc.options.jumpKey.isPressed())) {
+         double js = (double)this.jumpHeight.getCurrent();
+         if (this.algorithm.is("Low Hop")) {
+            js = Math.min(js, 0.3D);
+         }
+
+         if (mc.player.hasStatusEffect(StatusEffects.JUMP_BOOST)) {
+            js += (double)((float)(mc.player.getStatusEffect(StatusEffects.JUMP_BOOST).getAmplifier() + 1) * 0.1F);
+         }
+
+         mc.player.setVelocity(mc.player.getVelocity().x, js, mc.player.getVelocity().z);
+         moveY = js;
+         jumped = true;
+         if (this.rampMode.is("С каждого прыжка")) {
+            this.customTicks = 0;
+         }
+      } else if (!ground && !this.algorithm.is("Ground")) {
+         if (this.algorithm.is("Y-Port") && moveY > 0.0D && mc.player.fallDistance == 0.0F && this.airTicks >= 1) {
+            // Y-Port: сразу после отрыва прижимаемся обратно к земле
+            moveY = -(double)this.yPortDown.getCurrent();
+            mc.player.setVelocity(mc.player.getVelocity().x, moveY, mc.player.getVelocity().z);
+         } else if (moveY < 0.0D && this.fallBoost.getCurrent() > 1.0F) {
+            moveY *= (double)this.fallBoost.getCurrent();
+         }
+      }
+
+      this.airTicks = ground && !jumped ? 0 : this.airTicks + 1;
+      boolean inAir = !ground || jumped;
+      // --- величина скорости ---
+      double target;
+      double floor;
+      if (this.speedSource.is("Своя текущая")) {
+         target = Math.max(this.currentPlayerSpeed(), this.baseMoveSpeed()) * (double)this.ownSpeedMult.getCurrent();
+         floor = this.baseMoveSpeed();
+      } else {
+         double length = (double)this.rampTicks.getCurrent();
+         double t;
+         if (this.rampMode.is("Туда-обратно")) {
+            double phase = (double)this.customTicks % (length * 2.0D) / length;
+            t = phase <= 1.0D ? phase : 2.0D - phase;
+         } else {
+            t = (double)this.customTicks / length;
+         }
+
+         ++this.customTicks;
+         double lo = (double)Math.min(this.minSpeed.getCurrent(), this.maxSpeed.getCurrent());
+         double hi = (double)Math.max(this.minSpeed.getCurrent(), this.maxSpeed.getCurrent());
+         target = this.baseMoveSpeed() * (lo + (hi - lo) * this.ease(t));
+         floor = this.baseMoveSpeed() * lo;
+      }
+
+      target *= (double)(inAir ? this.airMult.getCurrent() : this.groundMult.getCurrent());
+      float forward = mc.player.input.movementForward;
+      float sideways = mc.player.input.movementSideways;
+      if (forward < 0.0F) {
+         target *= (double)this.backMult.getCurrent();
+      } else if (forward == 0.0F && sideways != 0.0F) {
+         target *= (double)this.sideMult.getCurrent();
+      }
+
+      if (mc.player.hurtTime > 0) {
+         target *= (double)this.hurtBoost.getCurrent();
+      }
+
+      if (jumped) {
+         target *= (double)this.jumpBoost.getCurrent();
+      }
+
+      if (inAir && !jumped && this.airKeep.getCurrent() < 0.999F) {
+         // в воздухе скорость понемногу теряется, но не ниже нижней границы
+         this.customSpeed = Math.max(Math.min(floor, target), Math.min(Math.max(target, this.customSpeed), this.customSpeed * (double)this.airKeep.getCurrent()));
+      } else if (inAir && !jumped && this.jumpBoost.getCurrent() > 1.0F) {
+         // буст прыжка держится, пока летим
+         this.customSpeed = Math.max(target, this.customSpeed);
+      } else {
+         this.customSpeed = target;
+      }
+
+      if (this.speedCap.getCurrent() > 0.0F) {
+         this.customSpeed = Math.min(this.customSpeed, (double)this.speedCap.getCurrent() / 20.0D);
+      }
+
+      if (mc.player.horizontalCollision && this.resetOnWall.isEnabled()) {
+         this.customTicks = 0;
+      }
+
+      // --- направление (стрейф) ---
+      double[] want = MovingUtil.calculateDirection(1.0D);
+      double wantAngle = Math.atan2(want[1], want[0]);
+      double vx = mc.player.getX() - mc.player.prevX;
+      double vz = mc.player.getZ() - mc.player.prevZ;
+      float strength = inAir ? this.strafeAir.getCurrent() : this.strafeGround.getCurrent();
+      if (this.strafeOnlyAir.isEnabled() && !inAir) {
+         strength = 0.0F;
+      }
+
+      double angle = wantAngle;
+      if (vx * vx + vz * vz > 1.0E-4D) {
+         double current = Math.atan2(vz, vx);
+         double diff = Math.atan2(Math.sin(wantAngle - current), Math.cos(wantAngle - current));
+         // сила стрейфа — какая доля поворота к нужному направлению делается за тик
+         double turn = diff * (double)strength;
+         double limit = Math.toRadians((double)this.strafeTurn.getCurrent());
+         turn = Math.max(-limit, Math.min(limit, turn));
+         angle = current + turn;
+      } else if (strength <= 0.0F) {
+         // стоим и стрейф выключен — ведёт обычная физика игры
+         return;
+      }
+
+      event.setMovePos(new Vec3d(Math.cos(angle) * this.customSpeed, moveY, Math.sin(angle) * this.customSpeed));
    }
 
    private boolean isPaused() {
@@ -77,6 +288,11 @@ public class Speed extends Module {
    private void onMove(EventMove event) {
       if (mc.player != null && mc.world != null) {
          if (!this.isPaused()) {
+            if (this.mode.is("Custom")) {
+               this.customMove(event);
+               return;
+            }
+
             if (this.mode.is("NCP") || this.mode.is("StrictStrafe")) {
                if (!mc.player.getAbilities().flying && !mc.player.isGliding() && mc.player.getHungerManager().getFoodLevel() > 6) {
                   double moveY = event.getMovePos().y;

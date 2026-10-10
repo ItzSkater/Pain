@@ -19,10 +19,10 @@ import tech.pain.client.modules.api.setting.impl.NumberSetting;
 )
 public final class MusicLyrics extends Module {
    public static final MusicLyrics INSTANCE = new MusicLyrics();
-   private final ModeSetting engine = new ModeSetting("Движок", "Whisper", "Vosk");
+   private final ModeSetting engine = new ModeSetting("Движок", "Whisper", "Vosk", "Whisper.cpp");
    private final ModeSetting language = new ModeSetting("Язык", "auto", "ru", "en", "de", "es", "fr");
    private final ModeSetting model = new ModeSetting("Модель", () -> this.engine.is("Whisper"), "base", "tiny", "small");
-   private final NumberSetting window = new NumberSetting("Окно (сек)", 5.0F, 3.0F, 10.0F, 0.5F, (java.util.function.Supplier<Boolean>)() -> this.engine.is("Whisper"));
+   private final NumberSetting window = new NumberSetting("Окно (сек)", 5.0F, 3.0F, 10.0F, 0.5F, (java.util.function.Supplier<Boolean>)() -> !this.engine.is("Vosk"));
    public final BooleanSetting synced = new BooleanSetting("Синхр. текст (LRCLIB)", true);
    private final NumberSetting offset = new NumberSetting("Сдвиг (мс)", 0.0F, -3000.0F, 3000.0F, 50.0F);
    public final ModeSetting translate = new ModeSetting("Перевод", "Выкл", "Русский", "English", "Deutsch", "Español", "Français", "Українська");
@@ -76,7 +76,8 @@ public final class MusicLyrics extends Module {
       this.lastConfig = this.config();
       LyricsService.configure(this.synced.isEnabled(), (long)this.offset.getCurrent());
       LyricsService.setTranslateTarget(this.translateTarget());
-      LyricsService.start(this.engine.is("Vosk") ? "vosk" : "whisper", this.language.get(), this.model.get(), this.window.getCurrent());
+      boolean cpp = this.engine.is("Whisper.cpp");
+      LyricsService.start(this.engine.is("Vosk") ? "vosk" : cpp ? "whispercpp" : "whisper", this.language.get(), cpp ? "large-v3-turbo" : this.model.get(), this.window.getCurrent());
    }
 
    @EventTarget

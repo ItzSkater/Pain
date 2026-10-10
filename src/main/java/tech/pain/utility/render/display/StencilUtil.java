@@ -1,22 +1,28 @@
 package tech.pain.utility.render.display;
 
 import net.minecraft.client.gl.Framebuffer;
-import org.lwjgl.opengl.EXTFramebufferObject;
 import org.lwjgl.opengl.GL11;
 import tech.pain.utility.interfaces.IClient;
 
 public class StencilUtil implements IClient {
+   private static int stencilTexture = -1;
+   private static int stencilWidth;
+   private static int stencilHeight;
+
    public static void push() {
       Framebuffer framebuffer = mc.getFramebuffer();
-      if (framebuffer.depthAttachment > -1) {
-         mc.getFramebuffer().beginWrite(false);
-         EXTFramebufferObject.glDeleteRenderbuffersEXT(framebuffer.depthAttachment);
-         int stencilDepthBufferID = EXTFramebufferObject.glGenRenderbuffersEXT();
-         EXTFramebufferObject.glBindRenderbufferEXT(36161, stencilDepthBufferID);
-         EXTFramebufferObject.glRenderbufferStorageEXT(36161, 34041, mc.getWindow().getWidth(), mc.getWindow().getHeight());
-         EXTFramebufferObject.glFramebufferRenderbufferEXT(36160, 36128, 36161, stencilDepthBufferID);
-         EXTFramebufferObject.glFramebufferRenderbufferEXT(36160, 36096, 36161, stencilDepthBufferID);
-         framebuffer.depthAttachment = -1;
+      int depth = framebuffer.getDepthAttachment();
+      // Маске нужен трафарет, а у основного кадра его нет. Раньше текстуру глубины здесь выбрасывали и ставили
+      // вместо неё рендербуфер — после этого её не мог прочитать никто (Iris рисовал чёрный мир).
+      // Теперь та же текстура просто пересоздаётся в формате «глубина + трафарет» и остаётся на месте.
+      if (depth > -1 && (depth != stencilTexture || stencilWidth != framebuffer.textureWidth || stencilHeight != framebuffer.textureHeight)) {
+         framebuffer.beginWrite(false);
+         com.mojang.blaze3d.platform.GlStateManager._bindTexture(depth);
+         GL11.glTexImage2D(3553, 0, org.lwjgl.opengl.GL30.GL_DEPTH24_STENCIL8, framebuffer.textureWidth, framebuffer.textureHeight, 0, org.lwjgl.opengl.GL30.GL_DEPTH_STENCIL, org.lwjgl.opengl.GL30.GL_UNSIGNED_INT_24_8, (java.nio.ByteBuffer)null);
+         org.lwjgl.opengl.GL30.glFramebufferTexture2D(36160, org.lwjgl.opengl.GL30.GL_DEPTH_STENCIL_ATTACHMENT, 3553, depth, 0);
+         stencilTexture = depth;
+         stencilWidth = framebuffer.textureWidth;
+         stencilHeight = framebuffer.textureHeight;
       }
 
       GL11.glStencilMask(255);

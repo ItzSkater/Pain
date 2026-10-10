@@ -11,6 +11,53 @@ base {
     archivesName = project.archives_base_name
 }
 
+// Версия клиента: alpha (по умолчанию, всё включено) или free. Задаётся так: ./gradlew build -Pedition=free
+// Редакций больше нет: клиент распространяется под GPLv3 одной сборкой со всеми модулями.
+// Переменная и флаг Edition.ALPHA оставлены, чтобы не трогать код, который на них смотрит.
+def edition = 'alpha'
+if (!(edition in ['free', 'alpha'])) {
+    throw new GradleException("edition должен быть free или alpha, а не '${edition}'")
+}
+def editionDir = layout.buildDirectory.dir("generated/edition")
+
+// Классы модулей, которых в версии Free нет совсем: их просто не кладём в jar
+def alphaOnlyClasses = [
+    'tech/pain/client/modules/impl/movement/Scaffold',
+    'tech/pain/client/modules/impl/combat/ElytraTarget',
+    'tech/pain/client/modules/impl/player/BaseFinder',
+    'tech/pain/client/modules/impl/player/ChestSorter',
+    'tech/pain/client/modules/impl/render/HitEffect',
+    'tech/pain/client/modules/impl/render/JumpEffect',
+    'tech/pain/client/modules/impl/render/Thunder',
+    'tech/pain/client/modules/impl/render/MotionBlur',
+    'tech/pain/client/modules/impl/render/BlockESP',
+    'tech/pain/client/modules/impl/render/StorageESP',
+    'tech/pain/client/modules/impl/render/Minimap',
+]
+
+tasks.register('generateEdition') {
+    inputs.property('edition', edition)
+    outputs.dir(editionDir)
+    doLast {
+        def file = editionDir.get().file('tech/pain/Edition.java').asFile
+        file.parentFile.mkdirs()
+        file.text = """package tech.pain;
+
+/** Версия клиента. Файл создаётся при сборке (см. build.gradle, параметр -Pedition). */
+public final class Edition {
+   public static final boolean ALPHA = ${edition == 'alpha'};
+   public static final String NAME = "Client";
+
+   private Edition() {
+   }
+}
+"""
+    }
+}
+sourceSets.main.java.srcDir(editionDir)
+tasks.named('compileJava') { dependsOn('generateEdition') }
+tasks.matching { it.name == 'sourcesJar' }.configureEach { dependsOn('generateEdition') }
+
 repositories {
     mavenCentral()
     maven { url "https://jitpack.io" }
@@ -29,6 +76,7 @@ dependencies {
     include implementation("meteordevelopment:discord-ipc:1.1")
     include implementation("meteordevelopment:orbit:0.2.3")
     implementation(shadow("dev.redstones.mediaplayerinfo:media-player-info:0.1.0"))
+    compileOnly(files("libs/mcpfabric-0.5.0+1.21.4.jar"))
     compileOnly("org.projectlombok:lombok:1.18.38")
     annotationProcessor("org.projectlombok:lombok:1.18.38")
 }
@@ -56,6 +104,12 @@ jar {
 
 shadowJar {
     exclude("org/objectweb/**")
+    if (edition == 'free') {
+        alphaOnlyClasses.each { exclude("${it}.class"); exclude("${it}\$*.class") }
+        // звук грозы нужен только модулю Thunder
+        exclude("assets/pain/sounds/**")
+        exclude("assets/pain/sounds.json")
+    }
     configurations = [project.configurations.shadow]
     archiveClassifier.set("dev")
 }
@@ -63,5 +117,6 @@ shadowJar {
 remapJar {
     dependsOn(shadowJar)
     inputFile = tasks.shadowJar.archiveFile
-    archiveFileName = "Pain.v${project.mod_version}.jar"
+    // обычная сборка (alpha) называется как раньше; free — отдельным файлом рядом
+    archiveFileName = edition == 'alpha' ? "Pain.v${project.mod_version}.jar" : "Pain-Free.v${project.mod_version}.jar"
 }

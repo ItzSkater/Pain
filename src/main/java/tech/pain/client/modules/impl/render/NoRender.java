@@ -15,10 +15,14 @@ import tech.pain.client.modules.api.setting.impl.MultiBooleanSetting;
 )
 public final class NoRender extends Module {
    public static final NoRender INSTANCE = new NoRender();
-   private final MultiBooleanSetting settings = MultiBooleanSetting.create("Убрать", List.of("Огонь", "Плохие эффекты", "Камера клип"));
+   private final MultiBooleanSetting settings = MultiBooleanSetting.create("Убрать", List.of("Огонь", "Плохие эффекты", "Камера клип", "Тыква"));
 
    public boolean isRemoveFire() {
       return this.isEnabled() && this.settings.isEnable(0);
+   }
+
+   public boolean isRemovePumpkin() {
+      return this.isEnabled() && this.settings.isEnable("Тыква");
    }
 
    public boolean isRemoveBadEffect() {
