@@ -61,20 +61,27 @@ public class Module implements IClient, Comparable<Module> {
       EventManager.call(new EventModuleToggle(this, this.enabled));
    }
 
+   // поля класса не меняются, поэтому их список ищем один раз; значения читаем каждый раз, как и раньше
+   private java.lang.reflect.Field[] settingFields;
+
    public List<Setting> getSettings() {
-      return Arrays.stream(this.getClass().getDeclaredFields()).map((field) -> {
+      if (this.settingFields == null) {
+         this.settingFields = Arrays.stream(this.getClass().getDeclaredFields()).peek(field -> field.setAccessible(true)).toArray(java.lang.reflect.Field[]::new);
+      }
+
+      List<Setting> out = new java.util.ArrayList<>();
+
+      for (java.lang.reflect.Field field : this.settingFields) {
          try {
-            field.setAccessible(true);
-            return field.get(this);
-         } catch (IllegalAccessException var3) {
-            var3.printStackTrace();
-            return null;
+            if (field.get(this) instanceof Setting setting) {
+               out.add(setting);
+            }
+         } catch (IllegalAccessException e) {
+            e.printStackTrace();
          }
-      }).filter((field) -> {
-         return field instanceof Setting;
-      }).map((field) -> {
-         return (Setting)field;
-      }).collect(Collectors.toList());
+      }
+
+      return out;
    }
 
    public JsonObject save() {

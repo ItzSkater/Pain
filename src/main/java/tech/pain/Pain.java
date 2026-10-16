@@ -39,6 +39,7 @@ public enum Pain implements ClientModInitializer {
    private ThemeManager themeManager;
    private MenuScreen menuScreen;
    private MenuScreen rockMenuScreen;
+   private tech.pain.client.screens.menu.tabs.TabsMenuScreen tabsMenuScreen;
    private ScriptManager scriptManager;
    private ServerHandler serverHandler;
    private FriendManager friendManager;
@@ -94,6 +95,7 @@ public enum Pain implements ClientModInitializer {
          tech.pain.base.mcp.PainMcp.init();
          try {
             this.discordManager = new DiscordManager();
+            tech.pain.client.modules.impl.misc.DiscordStatus.sync();
          } catch (Throwable e) {
             this.discordManager = null;
          }
@@ -153,6 +155,15 @@ public enum Pain implements ClientModInitializer {
 
    @Generated
    public MenuScreen getMenuScreen() {
+      tech.pain.client.modules.api.setting.impl.ModeSetting style = tech.pain.client.modules.impl.render.Menu.INSTANCE.style;
+      if (style.is("Tabs") || style.is("Liquid Tabs")) {
+         if (this.tabsMenuScreen == null) {
+            this.tabsMenuScreen = new tech.pain.client.screens.menu.tabs.TabsMenuScreen();
+         }
+
+         return this.tabsMenuScreen;
+      }
+
       if (this.rockMenuScreen != null && !tech.pain.client.modules.impl.render.Menu.INSTANCE.style.is("Classic")) {
          return this.rockMenuScreen;
       }

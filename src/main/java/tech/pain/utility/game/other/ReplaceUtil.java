@@ -92,10 +92,93 @@ public class ReplaceUtil {
 
    }
 
+   // замены по порядку: особые символы серверных рангов и «маленькие заглавные» буквы
+   private static final String[][] SYMBOLS = new String[][]{
+      {"ꔗ", String.valueOf(Formatting.BLUE) + "MODER"},
+      {"ꔥ", String.valueOf(Formatting.BLUE) + "ST.MODER"},
+      {"ꔡ", String.valueOf(Formatting.LIGHT_PURPLE) + "MODER+"},
+      {"ꔀ", String.valueOf(Formatting.GRAY) + "PLAYER"},
+      {"ꔉ", String.valueOf(Formatting.YELLOW) + "HELPER"},
+      {"◆", "@"},
+      {"┃", "|"},
+      {"ꔳ", String.valueOf(Formatting.AQUA) + "ML.ADMIN"},
+      {"ꔅ", String.valueOf(Formatting.RED) + "Y" + String.valueOf(Formatting.WHITE) + "T"},
+      {"ꔂ", String.valueOf(Formatting.BLUE) + "D.MODER"},
+      {"ꕠ", String.valueOf(Formatting.YELLOW) + "D.HELPER"},
+      {"ꕄ", String.valueOf(Formatting.RED) + "DRACULA"},
+      {"ꔖ", String.valueOf(Formatting.AQUA) + "OVERLORD"},
+      {"ꕈ", String.valueOf(Formatting.GREEN) + "COBRA"},
+      {"ꔨ", String.valueOf(Formatting.LIGHT_PURPLE) + "DRAGON"},
+      {"ꔤ", String.valueOf(Formatting.RED) + "IMPERATOR"},
+      {"ꔠ", String.valueOf(Formatting.GOLD) + "MAGISTER"},
+      {"ꔄ", String.valueOf(Formatting.BLUE) + "HERO"},
+      {"ꔒ", String.valueOf(Formatting.GREEN) + "AVENGER"},
+      {"ꕒ", String.valueOf(Formatting.WHITE) + "RABBIT"},
+      {"ꔈ", String.valueOf(Formatting.YELLOW) + "TITAN"},
+      {"ꕀ", String.valueOf(Formatting.DARK_GREEN) + "HYDRA"},
+      {"ꔶ", String.valueOf(Formatting.GOLD) + "TIGER"},
+      {"ꔲ", String.valueOf(Formatting.DARK_PURPLE) + "BULL"},
+      {"ꕖ", String.valueOf(Formatting.BLACK) + "BUNNY"},
+      {"ꕗꕘ", String.valueOf(Formatting.YELLOW) + "SPONSOR"},
+      {"\ud83d\udd25", "@"},
+      {"ᴀ", "A"},
+      {"ʙ", "B"},
+      {"ᴄ", "C"},
+      {"ᴅ", "D"},
+      {"ᴇ", "E"},
+      {"ғ", "F"},
+      {"ɢ", "G"},
+      {"ʜ", "H"},
+      {"ɪ", "I"},
+      {"ᴊ", "J"},
+      {"ᴋ", "K"},
+      {"ʟ", "L"},
+      {"ᴍ", "M"},
+      {"ɴ", "N"},
+      {"ꜱ", "S"},
+      {"ᴏ", "O"},
+      {"ᴘ", "P"},
+      {"ǫ", "Q"},
+      {"ʀ", "R"},
+      {"ᴛ", "T"},
+      {"ᴜ", "U"},
+      {"ᴠ", "V"},
+      {"ᴡ", "W"},
+      {"ꜰ", "F"},
+      {"ʏ", "Y"},
+      {"ᴢ", "Z"}
+   };
+   // первые символы всех замен: если ни одного нет в строке, менять нечего
+   private static final java.util.BitSet FIRST = new java.util.BitSet(65536);
+
+   static {
+      for (String[] pair : SYMBOLS) {
+         FIRST.set(pair[0].charAt(0));
+      }
+   }
+
+   /** Строку прогоняет шрифт на каждой надписи, поэтому без регулярных выражений и с быстрым выходом. */
    public static String replaceSymbols(String string) {
-      String var10000 = string.replaceAll("ꔗ", String.valueOf(Formatting.BLUE) + "MODER").replaceAll("ꔥ", String.valueOf(Formatting.BLUE) + "ST.MODER").replaceAll("ꔡ", String.valueOf(Formatting.LIGHT_PURPLE) + "MODER+").replaceAll("ꔀ", String.valueOf(Formatting.GRAY) + "PLAYER").replaceAll("ꔉ", String.valueOf(Formatting.YELLOW) + "HELPER").replaceAll("◆", "@").replaceAll("┃", "|").replaceAll("ꔳ", String.valueOf(Formatting.AQUA) + "ML.ADMIN");
-      String var10002 = String.valueOf(Formatting.RED);
-      return var10000.replaceAll("ꔅ", var10002 + "Y" + String.valueOf(Formatting.WHITE) + "T").replaceAll("ꔂ", String.valueOf(Formatting.BLUE) + "D.MODER").replaceAll("ꕠ", String.valueOf(Formatting.YELLOW) + "D.HELPER").replaceAll("ꕄ", String.valueOf(Formatting.RED) + "DRACULA").replaceAll("ꔖ", String.valueOf(Formatting.AQUA) + "OVERLORD").replaceAll("ꕈ", String.valueOf(Formatting.GREEN) + "COBRA").replaceAll("ꔨ", String.valueOf(Formatting.LIGHT_PURPLE) + "DRAGON").replaceAll("ꔤ", String.valueOf(Formatting.RED) + "IMPERATOR").replaceAll("ꔠ", String.valueOf(Formatting.GOLD) + "MAGISTER").replaceAll("ꔄ", String.valueOf(Formatting.BLUE) + "HERO").replaceAll("ꔒ", String.valueOf(Formatting.GREEN) + "AVENGER").replaceAll("ꕒ", String.valueOf(Formatting.WHITE) + "RABBIT").replaceAll("ꔈ", String.valueOf(Formatting.YELLOW) + "TITAN").replaceAll("ꕀ", String.valueOf(Formatting.DARK_GREEN) + "HYDRA").replaceAll("ꔶ", String.valueOf(Formatting.GOLD) + "TIGER").replaceAll("ꔲ", String.valueOf(Formatting.DARK_PURPLE) + "BULL").replaceAll("ꕖ", String.valueOf(Formatting.BLACK) + "BUNNY").replaceAll("ꕗꕘ", String.valueOf(Formatting.YELLOW) + "SPONSOR").replaceAll("\ud83d\udd25", "@").replaceAll("ᴀ", "A").replaceAll("ʙ", "B").replaceAll("ᴄ", "C").replaceAll("ᴅ", "D").replaceAll("ᴇ", "E").replaceAll("ғ", "F").replaceAll("ɢ", "G").replaceAll("ʜ", "H").replaceAll("ɪ", "I").replaceAll("ᴊ", "J").replaceAll("ᴋ", "K").replaceAll("ʟ", "L").replaceAll("ᴍ", "M").replaceAll("ɴ", "N").replaceAll("ꜱ", "S").replaceAll("ᴏ", "O").replaceAll("ᴘ", "P").replaceAll("ǫ", "Q").replaceAll("ʀ", "R").replaceAll("ᴛ", "T").replaceAll("ᴜ", "U").replaceAll("ᴠ", "V").replaceAll("ᴡ", "W").replaceAll("ꜰ", "F").replaceAll("ʏ", "Y").replaceAll("ᴢ", "Z");
+      boolean any = false;
+
+      for (int i = 0; i < string.length(); ++i) {
+         if (FIRST.get(string.charAt(i))) {
+            any = true;
+            break;
+         }
+      }
+
+      if (!any) {
+         return string;
+      }
+
+      for (String[] pair : SYMBOLS) {
+         if (string.contains(pair[0])) {
+            string = string.replace(pair[0], pair[1]);
+         }
+      }
+
+      return string;
    }
 
    public static Text replaceSymbols(Text text) {

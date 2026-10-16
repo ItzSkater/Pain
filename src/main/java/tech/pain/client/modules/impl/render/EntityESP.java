@@ -40,9 +40,9 @@ import tech.pain.utility.render.display.base.color.ColorRGBA;
 import tech.pain.utility.render.display.shader.DrawUtil;
 
 @ModuleAnnotation(
-   name = "NameTags",
+   name = "ItemTags",
    category = Category.RENDER,
-   description = "Показывает информацию о игроке"
+   description = "Старые плашки: игроки с предметами и названия вещей на земле"
 )
 public final class EntityESP extends Module {
    public static final EntityESP INSTANCE = new EntityESP();

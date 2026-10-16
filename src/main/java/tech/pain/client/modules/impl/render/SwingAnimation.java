@@ -17,7 +17,7 @@ import tech.pain.client.modules.api.setting.impl.NumberSetting;
 )
 public final class SwingAnimation extends Module {
    public static final SwingAnimation INSTANCE = new SwingAnimation();
-   public ModeSetting animationMode = new ModeSetting("Режим", new String[]{"Smooth", "Self", "Self2", "Down", "Forward", "Touch", "Pander", "Curt", "BlockHit", "Spin"});
+   public ModeSetting animationMode = new ModeSetting("Режим", new String[]{"Smooth", "Self", "Self2", "Down", "Forward", "Touch", "Pander", "Curt", "BlockHit", "Slide", "Push", "Spin"});
    public NumberSetting swingPower = new NumberSetting("Сила", 5.0F, 1.0F, 10.0F, 1.0F, () -> {
       return !this.animationMode.is("BlockHit") && !this.animationMode.is("Pander") && !this.animationMode.is("Curt");
    });
@@ -26,12 +26,134 @@ public final class SwingAnimation extends Module {
       return this.animationMode.is("Self") || this.animationMode.is("Self2");
    });
 
+   public NumberSetting offsetX = new NumberSetting("Смещение X", 0.0F, -1.0F, 1.0F, 0.01F);
+   public NumberSetting offsetY = new NumberSetting("Смещение Y", 0.0F, -1.0F, 1.0F, 0.01F);
+   public NumberSetting offsetZ = new NumberSetting("Смещение Z", 0.0F, -1.0F, 1.0F, 0.01F);
+   public tech.pain.client.modules.api.setting.impl.BooleanSetting trail = new tech.pain.client.modules.api.setting.impl.BooleanSetting("Трейл за мечом", true);
+   public NumberSetting trailLife = new NumberSetting("Длина трейла (сек)", 0.22F, 0.08F, 0.6F, 0.01F, (java.util.function.Supplier<Boolean>)() -> this.trail.isEnabled());
+   public ModeSetting trailColor = new ModeSetting("Цвет трейла", () -> this.trail.isEnabled(), "Тема", "Радуга", "Свой");
+   public tech.pain.client.modules.api.setting.impl.ColorSetting trailCustom = new tech.pain.client.modules.api.setting.impl.ColorSetting("Свой цвет трейла", new tech.pain.utility.render.display.base.color.ColorRGBA(255, 255, 255), () -> this.trail.isEnabled() && this.trailColor.is("Свой"));
+   // точки лезвия по кадрам: основание, кончик (в координатах руки) и время
+   private final java.util.ArrayDeque<float[]> blade = new java.util.ArrayDeque<>();
+
    private SwingAnimation() {
+   }
+
+   /**
+    * Запоминает, где сейчас основание и кончик клинка. matrices — матрица руки прямо перед отрисовкой предмета;
+    * поверх неё накладывается стандартная поза «оружие в правой руке» из ванильной модели handheld.
+    */
+   public void recordBlade(MatrixStack matrices, net.minecraft.item.ItemStack stack) {
+      if (!this.isEnabled() || !this.trail.isEnabled() || !(stack.getItem() instanceof net.minecraft.item.SwordItem || stack.getItem() instanceof net.minecraft.item.AxeItem || stack.getItem() instanceof net.minecraft.item.MaceItem)) {
+         return;
+      }
+
+      org.joml.Matrix4f m = new org.joml.Matrix4f(matrices.peek().getPositionMatrix())
+         .translate(1.13F / 16.0F, 3.2F / 16.0F, 1.13F / 16.0F)
+         .rotate(new org.joml.Quaternionf().rotationXYZ(0.0F, (float)Math.toRadians(-90.0), (float)Math.toRadians(25.0)))
+         .scale(0.68F)
+         .translate(-0.5F, -0.5F, -0.5F);
+      // текстура меча: рукоять внизу слева, кончик вверху справа
+      org.joml.Vector3f base = m.transformPosition(new org.joml.Vector3f(0.36F, 0.36F, 0.5F));
+      org.joml.Vector3f tip = m.transformPosition(new org.joml.Vector3f(0.94F, 0.96F, 0.5F));
+      this.blade.addLast(new float[]{base.x, base.y, base.z, tip.x, tip.y, tip.z, (float)(System.nanoTime() / 1000000L % 100000000L) / 1000.0F});
+      while (this.blade.size() > 90) {
+         this.blade.pollFirst();
+      }
+   }
+
+   /** Лента между положениями клинка за последние доли секунды: у кончика яркая, к рукояти и к хвосту гаснет. */
+   public void drawTrail() {
+      float now = (float)(System.nanoTime() / 1000000L % 100000000L) / 1000.0F;
+      float life = this.trailLife.getCurrent();
+
+      while (!this.blade.isEmpty() && (now - this.blade.peekFirst()[6] > life || now < this.blade.peekFirst()[6])) {
+         this.blade.pollFirst();
+      }
+
+      if (!this.isEnabled() || !this.trail.isEnabled() || this.blade.size() < 2) {
+         return;
+      }
+
+      com.mojang.blaze3d.systems.RenderSystem.enableBlend();
+      com.mojang.blaze3d.systems.RenderSystem.blendFuncSeparate(770, 1, 0, 1);
+      com.mojang.blaze3d.systems.RenderSystem.disableCull();
+      com.mojang.blaze3d.systems.RenderSystem.enableDepthTest();
+      com.mojang.blaze3d.systems.RenderSystem.depthMask(false);
+      com.mojang.blaze3d.systems.RenderSystem.setShader(net.minecraft.client.gl.ShaderProgramKeys.POSITION_COLOR);
+      net.minecraft.client.render.BufferBuilder bb = net.minecraft.client.render.Tessellator.getInstance().begin(net.minecraft.client.render.VertexFormat.DrawMode.TRIANGLES, net.minecraft.client.render.VertexFormats.POSITION_COLOR);
+      org.joml.Matrix4f id = new org.joml.Matrix4f();
+      float[] prev = null;
+      int i = 0;
+
+      for (float[] p : this.blade) {
+         if (prev != null) {
+            float a0 = 1.0F - (now - prev[6]) / life;
+            float a1 = 1.0F - (now - p[6]) / life;
+            int c0 = this.trailRgb((float)i / (float)this.blade.size());
+            int c1 = this.trailRgb((float)(i + 1) / (float)this.blade.size());
+            int tip0 = tech.pain.utility.render.level.ParticleShapes.withAlpha(c0, a0 * a0 * 0.85F);
+            int tip1 = tech.pain.utility.render.level.ParticleShapes.withAlpha(c1, a1 * a1 * 0.85F);
+            int base0 = tech.pain.utility.render.level.ParticleShapes.withAlpha(c0, 0.0F);
+            int base1 = tech.pain.utility.render.level.ParticleShapes.withAlpha(c1, 0.0F);
+            bb.vertex(id, prev[0], prev[1], prev[2]).color(base0);
+            bb.vertex(id, prev[3], prev[4], prev[5]).color(tip0);
+            bb.vertex(id, p[3], p[4], p[5]).color(tip1);
+            bb.vertex(id, prev[0], prev[1], prev[2]).color(base0);
+            bb.vertex(id, p[3], p[4], p[5]).color(tip1);
+            bb.vertex(id, p[0], p[1], p[2]).color(base1);
+         }
+
+         prev = p;
+         ++i;
+      }
+
+      net.minecraft.client.render.BuiltBuffer built = bb.endNullable();
+      if (built != null) {
+         net.minecraft.client.render.BufferRenderer.drawWithGlobalProgram(built);
+      }
+
+      com.mojang.blaze3d.systems.RenderSystem.depthMask(true);
+      com.mojang.blaze3d.systems.RenderSystem.enableCull();
+      com.mojang.blaze3d.systems.RenderSystem.defaultBlendFunc();
+      com.mojang.blaze3d.systems.RenderSystem.disableBlend();
+   }
+
+   private int trailRgb(float phase) {
+      if (this.trailColor.is("Радуга")) {
+         return tech.pain.utility.render.level.ParticleShapes.rainbow(phase + (float)(System.currentTimeMillis() % 4000L) / 4000.0F, 0.7F, 1.0F);
+      } else if (this.trailColor.is("Свой")) {
+         return this.trailCustom.getColor().getRGB() & 0xFFFFFF;
+      }
+
+      return tech.pain.Pain.getInstance().getThemeManager().getClientColor((int)(phase * 180.0F)).getRGB() & 0xFFFFFF;
    }
 
    public void renderSwordAnimation(MatrixStack matrices, float swingProgress, float equipProgress, Arm arm) {
       float anim = (float)Math.sin((double)swingProgress * 1.5707963267948966D * 2.0D);
       float sin2 = MathHelper.sin(MathHelper.sqrt(swingProgress) * 3.1415927F);
+      matrices.translate(this.offsetX.getCurrent(), this.offsetY.getCurrent(), this.offsetZ.getCurrent());
+      if (this.animationMode.is("Slide") || this.animationMode.is("Push")) {
+         // блок-анимации как в 1.7: Slide — клинок скользит внутрь и вниз, Push — тычок вперёд
+         float power = this.swingPower.getCurrent() / 5.0F;
+         if (this.animationMode.is("Slide")) {
+            matrices.translate(0.56F - 0.22F * sin2 * power, -0.52F - 0.1F * sin2 * power, -0.72F);
+            matrices.multiply(RotationAxis.POSITIVE_Y.rotationDegrees(45.0F - 25.0F * sin2));
+            matrices.multiply(RotationAxis.POSITIVE_X.rotationDegrees(-40.0F * sin2 * power));
+         } else {
+            matrices.translate(0.56F, -0.52F, -0.72F - 0.35F * sin2 * power);
+            matrices.multiply(RotationAxis.POSITIVE_Y.rotationDegrees(45.0F));
+            matrices.multiply(RotationAxis.POSITIVE_X.rotationDegrees(-12.0F * sin2));
+         }
+
+         // поза «меч в блоке»
+         matrices.translate(-0.1F, 0.08F, 0.0F);
+         matrices.multiply(RotationAxis.POSITIVE_Y.rotationDegrees(20.0F));
+         matrices.multiply(RotationAxis.POSITIVE_X.rotationDegrees(-80.0F));
+         matrices.multiply(RotationAxis.POSITIVE_Y.rotationDegrees(20.0F));
+         return;
+      }
+
       if (this.animationMode.is("Spin")) {
          matrices.translate(0.56F, -0.52F, -0.72F);
          matrices.multiply(RotationAxis.POSITIVE_Y.rotationDegrees(45.0F));

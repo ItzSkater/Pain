@@ -28,6 +28,7 @@ public class NeuroRotation extends RotationsSystem {
    private float lastSmoothness = 1.0F;
    private float lastPeak = 0.0F;
    private int sinceAttack = 999;
+   private int lastTick;
 
    public void notifyAttack() {
       this.sinceAttack = 0;
@@ -39,14 +40,20 @@ public class NeuroRotation extends RotationsSystem {
          return;
       }
 
-      float cameraYaw = mc.gameRenderer.getCamera().getYaw();
-      float cameraPitch = mc.gameRenderer.getCamera().getPitch();
-      if (!this.initialized) {
+      // текущий взгляд — это поворот самого игрока: при скрытой ротации камера остаётся там, куда смотришь ты,
+      // и считать ошибку от неё нельзя, иначе наведение топчется вокруг твоего прицела и не доходит до цели
+      float cameraYaw = mc.player.getYaw();
+      float cameraPitch = mc.player.getPitch();
+      if (!this.initialized || mc.player.age - this.lastTick > 3 || mc.player.age < this.lastTick) {
+         // начало новой серии наведения: прошлого движения нет
          this.lastCameraYaw = cameraYaw;
          this.lastCameraPitch = cameraPitch;
+         this.prevAppliedYaw = 0.0F;
+         this.prevAppliedPitch = 0.0F;
          this.initialized = true;
       }
 
+      this.lastTick = mc.player.age;
       float appliedYaw = MathHelper.wrapDegrees(cameraYaw - this.lastCameraYaw);
       float appliedPitch = cameraPitch - this.lastCameraPitch;
       Vec3d center = target.getBoundingBox().getCenter().subtract(mc.player.getEyePos());
@@ -61,16 +68,9 @@ public class NeuroRotation extends RotationsSystem {
       if (move != null) {
          float replayYaw = cameraYaw + move[0];
          float replayPitch = MathHelper.clamp(cameraPitch + move[1], -90.0F, 90.0F);
-         RotationComponent.update(
-            new Rotation(replayYaw, replayPitch),
-            Math.max(Math.abs(move[0]), 1.0F),
-            Math.max(Math.abs(move[1]), 1.0F),
-            360.0F,
-            360.0F,
-            randInt(3, 5),
-            2,
-            false
-         );
+         // RotationComponent делит скорость между осями по доле каждой, поэтому даём сумму: тогда шаг выйдет ровно записанным
+         float step = Math.max(Math.abs(move[0]) + Math.abs(move[1]), 1.0F);
+         RotationComponent.update(new Rotation(replayYaw, replayPitch), step, step, 360.0F, 360.0F, randInt(3, 5), 2, false);
       } else {
          double[] features = NeuroModel.features(
             yawErr, pitchErr, appliedYaw, appliedPitch, this.prevAppliedYaw, this.prevAppliedPitch,

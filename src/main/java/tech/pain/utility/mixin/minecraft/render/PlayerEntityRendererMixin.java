@@ -19,7 +19,7 @@ public class PlayerEntityRendererMixin {
       cancellable = true
    )
    public void render(PlayerEntityRenderState playerEntityRenderState, Text text, MatrixStack matrixStack, VertexConsumerProvider vertexConsumerProvider, int i, CallbackInfo ci) {
-      if (EntityESP.INSTANCE.isEnabled()) {
+      if (EntityESP.INSTANCE.isEnabled() || tech.pain.client.modules.impl.render.Nametags.INSTANCE.isEnabled()) {
          ci.cancel();
       }
 

@@ -116,6 +116,8 @@ public final class ModuleManager implements IMinecraft {
       registerModule(AutoTotem.INSTANCE);
       registerModule(tech.pain.client.modules.impl.combat.Criticals.INSTANCE);
       registerModule(tech.pain.client.modules.impl.combat.AttributeSwap.INSTANCE);
+      registerModule(tech.pain.client.modules.impl.combat.Backtrack.INSTANCE);
+      registerModule(tech.pain.client.modules.impl.combat.AutoBuff.INSTANCE);
       registerModule(tech.pain.client.modules.impl.combat.RageBot.INSTANCE);
       registerAlpha("tech.pain.client.modules.impl.combat.ElytraTarget");
       registerModule(ClickPearl.INSTANCE);
@@ -133,6 +135,7 @@ public final class ModuleManager implements IMinecraft {
       registerModule(GuiWalk.INSTANCE);
       registerModule(NoSlow.INSTANCE);
       registerModule(Speed.INSTANCE);
+      registerModule(tech.pain.client.modules.impl.movement.Fly.INSTANCE);
       registerModule(AirStuck.INSTANCE);
       registerModule(ElytraMotion.INSTANCE);
       registerModule(NoWeb.INSTANCE);
@@ -163,6 +166,10 @@ public final class ModuleManager implements IMinecraft {
       registerModule(tech.pain.client.modules.impl.render.Vignette.INSTANCE);
       registerModule(tech.pain.client.modules.impl.render.KillEffect.INSTANCE);
       registerModule(tech.pain.client.modules.impl.render.Trails.INSTANCE);
+      registerModule(tech.pain.client.modules.impl.render.Arrows.INSTANCE);
+      registerModule(tech.pain.client.modules.impl.render.Radar.INSTANCE);
+      registerModule(tech.pain.client.modules.impl.render.Emotes.INSTANCE);
+      registerModule(tech.pain.client.modules.impl.render.Cosmetics.INSTANCE);
       registerModule(tech.pain.client.modules.impl.render.Nametags.INSTANCE);
       registerModule(tech.pain.client.modules.impl.render.ESP.INSTANCE);
       registerModule(tech.pain.client.modules.impl.render.SmoothCamera.INSTANCE);
@@ -197,6 +204,9 @@ public final class ModuleManager implements IMinecraft {
          registerModule(tech.pain.client.modules.impl.misc.ChatLyrics.INSTANCE);
       }
       registerModule(tech.pain.client.modules.impl.misc.Spammer.INSTANCE);
+      registerModule(tech.pain.client.modules.impl.misc.DiscordStatus.INSTANCE);
+      registerModule(tech.pain.client.modules.impl.misc.Gta6Status.INSTANCE);
+      registerModule(tech.pain.client.modules.impl.misc.ClaudeFeed.INSTANCE);
       registerModule(tech.pain.client.modules.impl.misc.HitSound.INSTANCE);
       registerModule(tech.pain.client.modules.impl.misc.ShootSounds.INSTANCE);
       registerModule(tech.pain.client.modules.impl.player.AutoWarden.INSTANCE);

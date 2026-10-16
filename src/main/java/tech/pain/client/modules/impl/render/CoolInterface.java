@@ -20,9 +20,11 @@ public final class CoolInterface extends Module {
    public static final CoolInterface INSTANCE = new CoolInterface();
    public final BooleanSetting customTitle = new BooleanSetting("Своё главное меню", true);
    public final BooleanSetting customServers = new BooleanSetting("Свой список серверов", true);
-   public final ModeSetting wallpaper = new ModeSetting("Обои меню", () -> this.customTitle.isEnabled(), "Deep Space", "Inside Galaxy", "Спираль", "Чёрная дыра", "Линии", "Свой файл");
+   public final ModeSetting wallpaper = new ModeSetting("Обои меню", () -> this.customTitle.isEnabled(), "Слайд-шоу", "Случайные", "Deep Space", "Inside Galaxy", "Спираль", "Чёрная дыра", "Линии", "Калифорния", "Туманность Киля", "Тарантул", "Трифид и Лагуна", "Лагуна", "Звёздный след", "Чжанцзяцзе", "Над облаками", "Глен-Коу", "Уюни", "Остров Скай", "Лейк-Луиз", "Глен-Этив", "Дедвлей", "Тейде", "Свой файл");
+   public final tech.pain.client.modules.api.setting.impl.NumberSetting slideSeconds = new tech.pain.client.modules.api.setting.impl.NumberSetting("Смена обоев, сек", 25.0F, 8.0F, 120.0F, 1.0F, (java.util.function.Supplier<Boolean>)() -> this.customTitle.isEnabled() && this.wallpaper.is("Слайд-шоу"));
    public final ModeSetting titleColor = new ModeSetting("Цвет заголовка", () -> this.customTitle.isEnabled(), "Белый", "Тема", "Чёрный");
-   public final BooleanSetting gameMenus = new BooleanSetting("Стеклянные меню игры", true);
+   public final BooleanSetting gameMenus = new BooleanSetting("Свои меню игры", true);
+   public final ModeSetting menuLook = new ModeSetting("Вид меню игры", () -> this.gameMenus.isEnabled(), "Pain", "Стекло");
    public final ModeSetting glass = new ModeSetting("Стекло", "Матовое", "Глянцевое");
    public final NumberSetting density = new NumberSetting("Плотность стекла", 0.5F, 0.0F, 1.0F, 0.05F);
 
@@ -44,6 +46,10 @@ public final class CoolInterface extends Module {
    }
 
    /** Глянцевое — прозрачное, с резким бликом; матовое — с сильным размытием фона. */
+   public boolean painLook() {
+      return this.menuLook.is("Pain");
+   }
+
    public boolean glossy() {
       return this.glass.is("Глянцевое");
    }

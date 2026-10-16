@@ -576,6 +576,7 @@ public final class DrawUtil implements IWindow {
     */
    /** Капли дождя на «стекле» камеры: один проход по всему экрану, картинка под каплями преломляется. */
    public static void drawLensRain(float amount, float time) {
+      blurCopyAt = 0L;
       Framebuffer main = MinecraftClient.getInstance().getFramebuffer();
       if (amount <= 0.01F || lensRainProgram == null || lensRainProgram.use() == null) {
          return;
@@ -617,6 +618,7 @@ public final class DrawUtil implements IWindow {
    }
 
    public static void drawDistortion(float centerU, float centerV, float radius, float width, float strength, float twist) {
+      blurCopyAt = 0L;
       Framebuffer main = MinecraftClient.getInstance().getFramebuffer();
       if (distortProgram == null || distortProgram.use() == null) {
          return;
@@ -671,6 +673,11 @@ public final class DrawUtil implements IWindow {
       RenderSystem.enableCull();
    }
 
+   // когда снята последняя копия экрана для размытия; искажение и капли пишут в тот же буфер и сбрасывают её
+   private static long blurCopyAt;
+   private static int blurCopyW;
+   private static int blurCopyH;
+
    public static void drawBlur(MatrixStack matrices, float x, float y, float width, float height, float blurRadius, BorderRadius borderRadius, ColorRGBA color) {
       Framebuffer MAIN_FBO = MinecraftClient.getInstance().getFramebuffer();
       SimpleFramebuffer fbo = (SimpleFramebuffer)TEMP_FBO_SUPPLIER.get();
@@ -683,9 +690,17 @@ public final class DrawUtil implements IWindow {
       RenderSystem.enableBlend();
       RenderSystem.defaultBlendFunc();
       RenderSystem.disableCull();
-      fbo.beginWrite(false);
-      MAIN_FBO.draw(fbo.textureWidth, fbo.textureHeight);
-      MAIN_FBO.beginWrite(false);
+      // копия экрана одна на кадр: все стеклянные панели HUD размывают одну и ту же картинку
+      long now = System.nanoTime();
+      if (now - blurCopyAt > 2000000L || blurCopyW != fbo.textureWidth || blurCopyH != fbo.textureHeight) {
+         fbo.beginWrite(false);
+         MAIN_FBO.draw(fbo.textureWidth, fbo.textureHeight);
+         MAIN_FBO.beginWrite(false);
+         blurCopyAt = now;
+         blurCopyW = fbo.textureWidth;
+         blurCopyH = fbo.textureHeight;
+      }
+
       RenderSystem.setShaderTexture(0, fbo.getColorAttachment());
       blurProgram.use();
       blurProgram.findUniform("Size").set(width, height);

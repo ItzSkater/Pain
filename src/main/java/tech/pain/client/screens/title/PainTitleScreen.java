@@ -40,32 +40,85 @@ import tech.pain.utility.render.display.shader.DrawUtil;
  */
 public class PainTitleScreen extends Screen implements IMinecraft {
    private static final float SCALE = 2.0F;
-   private static final ImageTexture DEEP_SPACE = new ImageTexture("/assets/pain/textures/sky/deep_space.jpg");
-   private static final ImageTexture INSIDE_GALAXY = new ImageTexture("/assets/pain/textures/sky/inside_galaxy.jpg");
-   private static final ImageTexture SPIRAL = new ImageTexture("/assets/pain/textures/wallpaper/spiral.jpg");
-   private static final ImageTexture BLACK_HOLE = new ImageTexture("/assets/pain/textures/wallpaper/black_hole.jpg");
-   private static final ImageTexture LINES = new ImageTexture("/assets/pain/textures/wallpaper/lines.jpg");
+   // встроенные обои: название в настройке → картинка в ресурсах
+   public static final String[][] WALLPAPERS = {
+      {"Deep Space", "/assets/pain/textures/sky/deep_space.jpg"},
+      {"Inside Galaxy", "/assets/pain/textures/sky/inside_galaxy.jpg"},
+      {"Спираль", "/assets/pain/textures/wallpaper/spiral.jpg"},
+      {"Чёрная дыра", "/assets/pain/textures/wallpaper/black_hole.jpg"},
+      {"Линии", "/assets/pain/textures/wallpaper/lines.jpg"},
+      {"Калифорния", "/assets/pain/textures/wallpaper/california.jpg"},
+      {"Туманность Киля", "/assets/pain/textures/wallpaper/carina.jpg"},
+      {"Тарантул", "/assets/pain/textures/wallpaper/tarantula.jpg"},
+      {"Трифид и Лагуна", "/assets/pain/textures/wallpaper/trifid.jpg"},
+      {"Лагуна", "/assets/pain/textures/wallpaper/lagoon.jpg"},
+      {"Звёздный след", "/assets/pain/textures/wallpaper/star_trails.jpg"},
+      {"Чжанцзяцзе", "/assets/pain/textures/wallpaper/zhangjiajie.jpg"},
+      {"Над облаками", "/assets/pain/textures/wallpaper/above_clouds.jpg"},
+      {"Глен-Коу", "/assets/pain/textures/wallpaper/glen_coe.jpg"},
+      {"Уюни", "/assets/pain/textures/wallpaper/uyuni.jpg"},
+      {"Остров Скай", "/assets/pain/textures/wallpaper/skye.jpg"},
+      {"Лейк-Луиз", "/assets/pain/textures/wallpaper/lake_louise.jpg"},
+      {"Глен-Этив", "/assets/pain/textures/wallpaper/etive.jpg"},
+      {"Дедвлей", "/assets/pain/textures/wallpaper/deadvlei.jpg"},
+      {"Тейде", "/assets/pain/textures/wallpaper/teide.jpg"}
+   };
+   private static final java.util.Map<String, ImageTexture> LOADED = new java.util.HashMap<>();
+   // слайд-шоу и «случайные»: порядок перемешан один раз за запуск
+   private static final java.util.List<String> SHUFFLED = shuffled();
+   private static int slide;
+   private static long slideAt = System.currentTimeMillis();
+   private static String previousSlide;
    private static ImageTexture custom;
    private static String customStamp = "";
    private static long customChecked;
 
    /** Обои: встроенная панорама или первая картинка (png/jpg) из папки Pain/wallpaper. */
+   private static java.util.List<String> shuffled() {
+      java.util.List<String> names = new java.util.ArrayList<>();
+
+      for (String[] w : WALLPAPERS) {
+         names.add(w[0]);
+      }
+
+      java.util.Collections.shuffle(names);
+      return names;
+   }
+
+   private static ImageTexture texture(String name) {
+      return LOADED.computeIfAbsent(name, n -> {
+         for (String[] w : WALLPAPERS) {
+            if (w[0].equals(n)) {
+               return new ImageTexture(w[1]);
+            }
+         }
+
+         return new ImageTexture(WALLPAPERS[0][1]);
+      });
+   }
+
+   /** Освобождает видеопамять обоев, которые сейчас не показываются. */
+   private static void release(String... keep) {
+      java.util.Iterator<java.util.Map.Entry<String, ImageTexture>> it = LOADED.entrySet().iterator();
+
+      while (it.hasNext()) {
+         java.util.Map.Entry<String, ImageTexture> e = it.next();
+         if (!java.util.Arrays.asList(keep).contains(e.getKey())) {
+            e.getValue().dispose();
+            it.remove();
+         }
+      }
+   }
+
+   /** Обои: встроенная картинка, слайд-шоу, случайные или первая картинка (png/jpg) из папки Pain/wallpaper. */
    private static ImageTexture background() {
       tech.pain.client.modules.api.setting.impl.ModeSetting mode = tech.pain.client.modules.impl.render.CoolInterface.INSTANCE.wallpaper;
-      if (mode.is("Inside Galaxy")) {
-         return INSIDE_GALAXY;
+      if (mode.is("Случайные")) {
+         return texture(SHUFFLED.get(0));
       }
 
-      if (mode.is("Спираль")) {
-         return SPIRAL;
-      }
-
-      if (mode.is("Чёрная дыра")) {
-         return BLACK_HOLE;
-      }
-
-      if (mode.is("Линии")) {
-         return LINES;
+      if (mode.is("Слайд-шоу")) {
+         return texture(SHUFFLED.get(slide % SHUFFLED.size()));
       }
 
       if (mode.is("Свой файл")) {
@@ -104,7 +157,13 @@ public class PainTitleScreen extends Screen implements IMinecraft {
          }
       }
 
-      return DEEP_SPACE;
+      for (String[] w : WALLPAPERS) {
+         if (mode.is(w[0])) {
+            return texture(w[0]);
+         }
+      }
+
+      return texture(WALLPAPERS[0][0]);
    }
    private final List<Button> buttons = new ArrayList<>();
    private final long openedAt = System.currentTimeMillis();
@@ -216,7 +275,7 @@ public class PainTitleScreen extends Screen implements IMinecraft {
       tech.pain.client.modules.impl.render.CoolInterface menuModule = tech.pain.client.modules.impl.render.CoolInterface.INSTANCE;
       ColorRGBA titleColor = menuModule.titleColor.is("Тема") ? c1 : (menuModule.titleColor.is("Чёрный") ? new ColorRGBA(0, 0, 0) : new ColorRGBA(255, 255, 255));
       ctx.drawText(Fonts.BOLD.getFont(titleSize), title + tail, tx, top + 48.0F, titleColor.withAlpha(alpha));
-      String sub = tech.pain.Edition.NAME + "  ·  v1.2.2  ·  Minecraft 1.21.4";
+      String sub = tech.pain.Edition.NAME + "  ·  v1.3  ·  Minecraft 1.21.4";
       float subW = Fonts.REGULAR.getWidth(sub, 8.0F);
       ctx.drawText(Fonts.REGULAR.getFont(8.0F), sub, cx - subW / 2.0F, top + 82.0F, new ColorRGBA(220, 220, 232, (int)(170.0F * appear)));
 
@@ -246,7 +305,7 @@ public class PainTitleScreen extends Screen implements IMinecraft {
       this.chip(ctx, m, chipX, sh - 36.0F, "Стекло: " + menuModule.glass.get(), appear, () -> cycle(menuModule.glass));
       // подписи по углам
       String name = mc.getSession().getUsername();
-      ctx.drawText(Fonts.REGULAR.getFont(7.0F), "Pain " + tech.pain.Edition.NAME + " v1.2.2", 10.0F, sh - 14.0F, new ColorRGBA(220, 220, 232, (int)(150.0F * appear)));
+      ctx.drawText(Fonts.REGULAR.getFont(7.0F), "Pain " + tech.pain.Edition.NAME + " v1.3", 10.0F, sh - 14.0F, new ColorRGBA(220, 220, 232, (int)(150.0F * appear)));
       float nameW = Fonts.MEDIUM.getWidth(name, 7.5F);
       DrawUtil.drawRoundedRect(m, sw - nameW - 32.0F, sh - 20.0F, 6.0F, 6.0F, BorderRadius.all(3.0F), new ColorRGBA(60, 220, 110, alpha));
       ctx.drawText(Fonts.MEDIUM.getFont(7.5F), name, sw - nameW - 22.0F, sh - 21.0F, new ColorRGBA(240, 240, 248, alpha));
@@ -285,16 +344,49 @@ public class PainTitleScreen extends Screen implements IMinecraft {
 
    /** Панорама закрывает весь экран, медленно плывёт вбок и слегка сдвигается за мышью. */
    public static void drawWallpaper(MatrixStack m, float sw, float sh, float mouseX, float mouseY) {
-      double time = (double)(System.currentTimeMillis() - WALLPAPER_START) / 1000.0;
       DrawUtil.drawRoundedRect(m, 0.0F, 0.0F, sw, sh, BorderRadius.ZERO, new ColorRGBA(6, 6, 12, 255));
-      ImageTexture image = background();
-      int texture = image.id();
-      if (texture == -1 || image.width() == 0) {
+      parallaxX += ((mouseX / sw - 0.5F) - parallaxX) * 0.05F;
+      parallaxY += ((mouseY / sh - 0.5F) - parallaxY) * 0.05F;
+      tech.pain.client.modules.impl.render.CoolInterface ui = tech.pain.client.modules.impl.render.CoolInterface.INSTANCE;
+      if (!ui.wallpaper.is("Слайд-шоу")) {
+         drawImage(m, background(), sw, sh, 1.0F, 0.0F);
          return;
       }
 
-      parallaxX += ((mouseX / sw - 0.5F) - parallaxX) * 0.05F;
-      parallaxY += ((mouseY / sh - 0.5F) - parallaxY) * 0.05F;
+      long now = System.currentTimeMillis();
+      long hold = (long)(ui.slideSeconds.getCurrent() * 1000.0F);
+      String current = SHUFFLED.get(slide % SHUFFLED.size());
+      ImageTexture next = texture(SHUFFLED.get((slide + 1) % SHUFFLED.size()));
+      // следующий кадр начинаем грузить заранее; переключаемся, только когда он готов
+      if (now - slideAt > hold && next.id() != -1) {
+         previousSlide = current;
+         slide++;
+         slideAt = now;
+         current = SHUFFLED.get(slide % SHUFFLED.size());
+      }
+
+      float fade = Math.min(1.0F, (float)(now - slideAt) / 1400.0F);
+      // медленный наезд камеры за время показа кадра
+      float zoom = Math.min(1.0F, (float)(now - slideAt) / (float)(hold + 1400L));
+      if (previousSlide != null && fade < 1.0F) {
+         drawImage(m, texture(previousSlide), sw, sh, 1.0F, 1.0F);
+      }
+
+      drawImage(m, texture(current), sw, sh, fade * fade * (3.0F - 2.0F * fade), zoom);
+      if (fade >= 1.0F) {
+         release(current, SHUFFLED.get((slide + 1) % SHUFFLED.size()));
+         previousSlide = null;
+      }
+   }
+
+   /** Картинка на весь экран: панорама плывёт вбок, обычное фото заполняет экран и чуть следует за мышью. */
+   private static void drawImage(MatrixStack m, ImageTexture image, float sw, float sh, float alpha, float zoomIn) {
+      int texture = image.id();
+      if (texture == -1 || image.width() == 0 || alpha <= 0.0F) {
+         return;
+      }
+
+      double time = (double)(System.currentTimeMillis() - WALLPAPER_START) / 1000.0;
       float aspect = (float)image.width() / (float)image.height();
       float uSpan;
       float vSpan;
@@ -309,7 +401,7 @@ public class PainTitleScreen extends Screen implements IMinecraft {
       } else {
          // обычная картинка: заполняем экран с обрезкой краёв, с небольшим запасом под сдвиг за мышью
          float screen = sw / sh;
-         float zoom = 0.94F;
+         float zoom = 0.94F - 0.06F * zoomIn;
          if (aspect > screen) {
             vSpan = zoom;
             uSpan = zoom * screen / aspect;
@@ -318,20 +410,27 @@ public class PainTitleScreen extends Screen implements IMinecraft {
             vSpan = zoom * aspect / screen;
          }
 
-         u0 = (1.0F - uSpan) / 2.0F + parallaxX * (1.0F - zoom);
-         v0 = (1.0F - vSpan) / 2.0F + parallaxY * (1.0F - zoom);
+         u0 = (1.0F - uSpan) / 2.0F + parallaxX * (1.0F - zoom) * 0.8F;
+         v0 = (1.0F - vSpan) / 2.0F + parallaxY * (1.0F - zoom) * 0.8F;
       }
 
       Matrix4f mat = m.peek().getPositionMatrix();
-      RenderSystem.disableBlend();
+      int color = Math.min(255, (int)(alpha * 255.0F)) << 24 | 0xFFFFFF;
+      if (alpha < 1.0F) {
+         RenderSystem.enableBlend();
+         RenderSystem.defaultBlendFunc();
+      } else {
+         RenderSystem.disableBlend();
+      }
+
       RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
       RenderSystem.setShader(ShaderProgramKeys.POSITION_TEX_COLOR);
       RenderSystem.setShaderTexture(0, texture);
       BufferBuilder bb = Tessellator.getInstance().begin(DrawMode.QUADS, VertexFormats.POSITION_TEXTURE_COLOR);
-      bb.vertex(mat, 0.0F, 0.0F, 0.0F).texture(u0, v0).color(0xFFFFFFFF);
-      bb.vertex(mat, 0.0F, sh, 0.0F).texture(u0, v0 + vSpan).color(0xFFFFFFFF);
-      bb.vertex(mat, sw, sh, 0.0F).texture(u0 + uSpan, v0 + vSpan).color(0xFFFFFFFF);
-      bb.vertex(mat, sw, 0.0F, 0.0F).texture(u0 + uSpan, v0).color(0xFFFFFFFF);
+      bb.vertex(mat, 0.0F, 0.0F, 0.0F).texture(u0, v0).color(color);
+      bb.vertex(mat, 0.0F, sh, 0.0F).texture(u0, v0 + vSpan).color(color);
+      bb.vertex(mat, sw, sh, 0.0F).texture(u0 + uSpan, v0 + vSpan).color(color);
+      bb.vertex(mat, sw, 0.0F, 0.0F).texture(u0 + uSpan, v0).color(color);
       BufferRenderer.drawWithGlobalProgram(bb.end());
       RenderSystem.setShaderTexture(0, 0);
       RenderSystem.enableBlend();

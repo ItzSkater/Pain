@@ -58,6 +58,8 @@ public class RockMenuScreen extends MenuScreen {
    private static final float RAIL = 33.0F;
    private static final float LIST = 101.0F;
    private static final float HEADER = 24.0F;
+   // высота полосы вкладок в стиле «Табы»
+   private static final float TABS = 26.0F;
    private static final float RADIUS = 12.0F;
 
    private final Animation open = new Animation(260L, Easing.CUBIC_OUT);
@@ -76,6 +78,9 @@ public class RockMenuScreen extends MenuScreen {
    private boolean closing;
    private boolean categoryInit;
    private tech.pain.client.modules.api.setting.impl.StringSetting editing;
+   // точный ввод числа в поле у ползунка
+   private NumberSetting numEditing;
+   private String numText = "";
    private java.util.function.Supplier<ColorRGBA> pickGet;
    private java.util.function.Consumer<ColorRGBA> pickSet;
    private String pickTitle = "";
@@ -148,7 +153,7 @@ public class RockMenuScreen extends MenuScreen {
    }
 
    public boolean wantsKeyboard() {
-      return this.searchFocus || this.bindingModule != null || this.bindingKey != null || this.pickSet != null || this.editing != null;
+      return this.searchFocus || this.bindingModule != null || this.bindingKey != null || this.pickSet != null || this.editing != null || this.numEditing != null;
    }
 
    /** Рисует меню в текущий framebuffer; курсор — точка, куда смотрит игрок на 3D-экране. */
@@ -301,19 +306,39 @@ public class RockMenuScreen extends MenuScreen {
          DrawUtil.drawRoundedRect(m, this.x, this.y, this.w, this.h, BorderRadius.all(RADIUS), new ColorRGBA(12, 12, 16, this.embedded ? 255.0F : 228.0F * a));
       }
 
-      DrawUtil.drawRoundedRect(m, this.x, this.y, RAIL, this.h, new BorderRadius(RADIUS, 0.0F, 0.0F, RADIUS), glass ? new ColorRGBA(255, 255, 255, 12.0F * a) : new ColorRGBA(0, 0, 0, 70.0F * a));
       ColorRGBA line = new ColorRGBA(255, 255, 255, (glass ? 34.0F : 16.0F) * a);
-      float listX = this.x + RAIL;
+      // «Табы»: категории вкладками сверху, без боковой полосы; ниже всё как обычно, только начинается под вкладками
+      boolean tabs = !this.cinema && Menu.INSTANCE.style.is("Табы");
+      float listX;
+      if (tabs) {
+         DrawUtil.drawRoundedRect(m, this.x, this.y, this.w, TABS, new BorderRadius(RADIUS, RADIUS, 0.0F, 0.0F), new ColorRGBA(0, 0, 0, 70.0F * a));
+         DrawUtil.drawRect(m, this.x + 1.0F, this.y + TABS - 0.5F, this.w - 2.0F, 0.5F, line);
+         this.renderTabs(ctx, m, theme, a);
+         this.y += TABS;
+         this.h -= TABS;
+         listX = this.x;
+      } else {
+         DrawUtil.drawRoundedRect(m, this.x, this.y, RAIL, this.h, new BorderRadius(RADIUS, 0.0F, 0.0F, RADIUS), glass ? new ColorRGBA(255, 255, 255, 12.0F * a) : new ColorRGBA(0, 0, 0, 70.0F * a));
+         listX = this.x + RAIL;
+      }
+
       float contentX = listX + LIST;
       DrawUtil.drawRect(m, listX - 0.5F, this.y + 1.0F, 0.5F, this.h - 2.0F, line);
       DrawUtil.drawRect(m, contentX - 0.5F, this.y + 1.0F, 0.5F, this.h - 2.0F, line);
       DrawUtil.drawRect(m, contentX, this.y + HEADER - 0.5F, this.x + this.w - contentX - 1.0F, 0.5F, line);
       DrawUtil.drawRect(m, listX, this.y + HEADER - 0.5F, LIST - 0.5F, 0.5F, line);
 
-      this.renderRail(ctx, m, theme, a);
+      if (!tabs) {
+         this.renderRail(ctx, m, theme, a);
+      }
+
       this.renderList(ctx, m, theme, a, listX);
       this.renderHeader(ctx, m, theme, a, contentX);
       this.renderContent(ctx, m, theme, a, contentX);
+      if (tabs) {
+         this.y -= TABS;
+         this.h += TABS;
+      }
 
       DrawUtil.drawRoundedBorder(m, this.x, this.y, this.w, this.h, -0.5F, BorderRadius.all(RADIUS), new ColorRGBA(255, 255, 255, (glass ? 110.0F : 26.0F) * a));
       this.renderPicker(ctx, m, a);
@@ -369,6 +394,71 @@ public class RockMenuScreen extends MenuScreen {
       float gy = this.y + this.h - 26.0F;
       this.categoryButton(ctx, m, theme, a, cx - 8.5F, gy, Category.THEMES.getIcon(), this.category == Category.THEMES && this.query.isEmpty(), "themes");
       this.hits.add(new Hit(cx - 8.5F, gy, 17.0F, 17.0F, () -> this.selectCategory(Category.THEMES), null, null));
+   }
+
+   /** Полоса вкладок: лого, категории с иконкой и названием, бегущая подсветка под выбранной, темы справа. */
+   private void renderTabs(CustomDrawContext ctx, MatrixStack m, Theme theme, float a) {
+      ColorRGBA c1 = theme.getColor().withAlpha(255.0F * a);
+      ColorRGBA c2 = theme.getSecondColor().withAlpha(255.0F * a);
+      float ty = this.y;
+      MsdfRenderer.renderText(Fonts.ICONS, "B", 12.0F, Gradient.of(c1, c2, c1, c2), m.peek().getPositionMatrix(), this.x + 10.0F, ty + 7.0F, 0.0F, true, this.x + 10.0F, this.x + 20.0F);
+      ctx.drawText(Fonts.MEDIUM.getFont(8.5F), "Pain", this.x + 25.0F, ty + 9.0F, new ColorRGBA(245, 245, 250, 255.0F * a));
+      float start = this.x + 58.0F;
+      float end = this.x + this.w - 30.0F;
+      List<Category> cats = new ArrayList<>();
+      float natural = 0.0F;
+
+      for (Category cat : Category.values()) {
+         if (cat != Category.THEMES) {
+            cats.add(cat);
+            natural += 26.0F + Fonts.MEDIUM.getWidth(cat.getName(), 7.0F);
+         }
+      }
+
+      // не влезают названия — остаются только иконки
+      boolean names = natural <= end - start;
+      float tx = start;
+      float selX = -1.0F;
+      float selW = 0.0F;
+
+      for (Category cat : cats) {
+         float tw = names ? 26.0F + Fonts.MEDIUM.getWidth(cat.getName(), 7.0F) : Math.min(26.0F, (end - start) / (float)cats.size());
+         boolean active = cat == this.category && this.query.isEmpty();
+         float hover = this.hover("tab_" + cat, GuiUtil.isHovered(tx, ty + 3.0F, tw, TABS - 6.0F, this.mouseX, this.mouseY));
+         float sel = this.hover("tabsel_" + cat, active);
+         DrawUtil.drawRoundedRect(m, tx + 1.0F, ty + 4.0F, tw - 2.0F, TABS - 8.0F, BorderRadius.all(5.0F), new ColorRGBA(255, 255, 255, 9.0F * hover * a).mix(theme.getColor().withAlpha(30.0F * a), sel));
+         ColorRGBA tint = new ColorRGBA(150, 150, 162).mix(new ColorRGBA(235, 235, 242), hover * 0.6F).mix(theme.getColor().mix(new ColorRGBA(255, 255, 255), 0.25F), sel).withAlpha(255.0F * a);
+         float ix = names ? tx + 8.0F : tx + tw / 2.0F - Fonts.ICONS.getWidth(cat.getIcon(), 8.0F) / 2.0F;
+         ctx.drawText(Fonts.ICONS.getFont(8.0F), cat.getIcon(), ix, ty + 9.0F, tint);
+         if (names) {
+            ctx.drawText(Fonts.MEDIUM.getFont(7.0F), cat.getName(), tx + 19.0F, ty + 9.5F, tint);
+         }
+
+         if (active) {
+            selX = tx + 6.0F;
+            selW = tw - 12.0F;
+         }
+
+         final Category target = cat;
+         this.hits.add(new Hit(tx, ty + 3.0F, tw, TABS - 6.0F, () -> this.selectCategory(target), null, null));
+         tx += tw;
+      }
+
+      float gx = this.x + this.w - 26.0F;
+      this.categoryButton(ctx, m, theme, a, gx, ty + 4.5F, Category.THEMES.getIcon(), this.category == Category.THEMES && this.query.isEmpty(), "themes");
+      this.hits.add(new Hit(gx, ty + 4.5F, 17.0F, 17.0F, () -> this.selectCategory(Category.THEMES), null, null));
+      if (this.category == Category.THEMES && this.query.isEmpty()) {
+         selX = gx + 2.0F;
+         selW = 13.0F;
+      }
+
+      if (selX >= 0.0F) {
+         // подсветка перетекает к выбранной вкладке
+         float px = this.smooth("tab_line_x", selX);
+         float pw = this.smooth("tab_line_w", selW);
+         DrawUtil.drawShadow(m, px, ty + TABS - 3.0F, pw, 2.0F, 6.0F, BorderRadius.all(1.0F), theme.getColor().withAlpha(120.0F * a));
+         DrawUtil.drawRoundedRect(m, px, ty + TABS - 3.0F, pw, 2.0F, BorderRadius.all(1.0F), Gradient.of(c1, c2, c1, c2));
+      }
    }
 
    private void categoryButton(CustomDrawContext ctx, MatrixStack m, Theme theme, float a, float bx, float by, String icon, boolean active, Object key) {
@@ -855,10 +945,22 @@ public class RockMenuScreen extends MenuScreen {
             pct = range <= 0.0F ? 0.0F : (num.getCurrent() - num.getMin()) / range;
          }
 
-         String value = formatNumber(num);
+         // значение — поле ввода: клик по нему, цифры с клавиатуры, Enter. Так можно задать число точнее шага ползунка
+         boolean typing = this.numEditing == num;
+         String value = typing ? this.numText : formatNumber(num);
          float vw = Fonts.MEDIUM.getWidth(value, 6.5F);
-         MsdfRenderer.renderText(Fonts.REGULAR, s.getName(), 7.0F, text.getRGB(), m.peek().getPositionMatrix(), tx, cy + 6.5F, 0.0F, true, 0.8F, 1.0F, maxName - vw - 6.0F);
-         ctx.drawText(Fonts.MEDIUM.getFont(6.5F), value, cx + cw - 7.0F - vw, cy + 7.0F, theme.getColor().mix(new ColorRGBA(255, 255, 255), 0.35F).withAlpha(255.0F * a));
+         float boxW = Math.max(22.0F, vw + 8.0F);
+         float boxX = cx + cw - 7.0F - boxW;
+         MsdfRenderer.renderText(Fonts.REGULAR, s.getName(), 7.0F, text.getRGB(), m.peek().getPositionMatrix(), tx, cy + 6.5F, 0.0F, true, 0.8F, 1.0F, maxName - boxW - 5.0F);
+         DrawUtil.drawRoundedRect(m, boxX, cy + 3.5F, boxW, 10.5F, BorderRadius.all(3.0F), new ColorRGBA(255, 255, 255, (typing ? 26.0F : 12.0F) * a));
+         if (typing) {
+            DrawUtil.drawRoundedBorder(m, boxX, cy + 3.5F, boxW, 10.5F, -0.5F, BorderRadius.all(3.0F), theme.getColor().withAlpha(170.0F * a));
+            if (System.currentTimeMillis() % 1000L < 520L) {
+               DrawUtil.drawRect(m, boxX + boxW - 3.5F, cy + 5.5F, 0.6F, 6.5F, theme.getColor().withAlpha(255.0F * a));
+            }
+         }
+
+         ctx.drawText(Fonts.MEDIUM.getFont(6.5F), value, boxX + boxW - 4.0F - vw, cy + 7.0F, theme.getColor().mix(new ColorRGBA(255, 255, 255), 0.35F).withAlpha(255.0F * a));
          float anim = this.smooth("num_" + System.identityHashCode(num), pct);
          DrawUtil.drawRoundedRect(m, trackX, cy + 19.0F, trackW, 3.0F, BorderRadius.all(1.5F), new ColorRGBA(255, 255, 255, 22.0F * a));
          ColorRGBA c1 = theme.getColor().withAlpha(255.0F * a);
@@ -872,6 +974,12 @@ public class RockMenuScreen extends MenuScreen {
             this.dragX = trackX;
             this.dragW = trackW;
             this.applyDrag();
+         }, null, null).clip(top, bottom));
+         this.hits.add(new Hit(boxX, cy + 3.5F, boxW, 10.5F, () -> {
+            this.numEditing = num;
+            this.numText = "";
+            this.bindingKey = null;
+            this.bindingModule = null;
          }, null, null).clip(top, bottom));
       } else if (s instanceof ModeSetting mode) {
          ctx.drawText(Fonts.REGULAR.getFont(7.0F), s.getName(), tx, cy + 6.5F, text);
@@ -1112,6 +1220,20 @@ public class RockMenuScreen extends MenuScreen {
       return name == null ? "?" : name;
    }
 
+   /** Применяет набранное число: в пределах ползунка, но без округления до его шага. */
+   private void commitNumber() {
+      NumberSetting num = this.numEditing;
+      this.numEditing = null;
+      if (num == null || this.numText.isEmpty()) {
+         return;
+      }
+
+      try {
+         num.setCurrent(MathHelper.clamp(Float.parseFloat(this.numText), num.getMin(), num.getMax()));
+      } catch (NumberFormatException ignored) {
+      }
+   }
+
    private static String formatNumber(NumberSetting num) {
       String inc = String.valueOf(num.getIncrement());
       int scale = inc.contains(".") ? inc.split("\\.")[1].length() : 0;
@@ -1119,7 +1241,14 @@ public class RockMenuScreen extends MenuScreen {
          scale = 0;
       }
 
-      return String.format(Locale.US, "%." + scale + "f", num.getCurrent());
+      String rounded = String.format(Locale.US, "%." + scale + "f", num.getCurrent());
+      // число, введённое вручную точнее шага, показываем как есть
+      if (Math.abs(Float.parseFloat(rounded) - num.getCurrent()) > 1.0E-5F) {
+         String exact = String.format(Locale.US, "%.4f", num.getCurrent());
+         return exact.replaceAll("0+$", "").replaceAll("\\.$", "");
+      }
+
+      return rounded;
    }
 
    // ------------------------------------------------------------------- input
@@ -1158,6 +1287,7 @@ public class RockMenuScreen extends MenuScreen {
       }
 
       this.editing = null;
+      this.commitNumber();
       boolean wasSearch = this.searchFocus;
       this.searchFocus = false;
 
@@ -1223,6 +1353,18 @@ public class RockMenuScreen extends MenuScreen {
          } else {
             this.bindingKey.setKeyCode(keyCode);
             this.bindingKey = null;
+         }
+
+         return true;
+      }
+
+      if (this.numEditing != null) {
+         if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+            this.numEditing = null;
+         } else if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
+            this.commitNumber();
+         } else if (keyCode == GLFW.GLFW_KEY_BACKSPACE && !this.numText.isEmpty()) {
+            this.numText = Screen.hasControlDown() ? "" : this.numText.substring(0, this.numText.length() - 1);
          }
 
          return true;
@@ -1297,6 +1439,21 @@ public class RockMenuScreen extends MenuScreen {
 
    @Override
    public boolean charTyped(char chr, int modifiers) {
+      if (this.numEditing != null) {
+         if (chr == ',') {
+            chr = '.';
+         }
+
+         boolean digit = chr >= '0' && chr <= '9';
+         boolean dot = chr == '.' && !this.numText.contains(".");
+         boolean minus = chr == '-' && this.numText.isEmpty() && this.numEditing.getMin() < 0.0F;
+         if ((digit || dot || minus) && this.numText.length() < 10) {
+            this.numText = this.numText + chr;
+         }
+
+         return true;
+      }
+
       if (this.editing != null) {
          if (chr >= ' ' && chr != '§') {
             this.editing.set(this.editing.get() + chr);

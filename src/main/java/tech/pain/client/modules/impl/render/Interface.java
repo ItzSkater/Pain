@@ -38,7 +38,7 @@ import tech.pain.utility.render.display.base.GuiUtil;
 )
 public final class Interface extends Module {
    public static final Interface INSTANCE = new Interface();
-   public final tech.pain.client.modules.api.setting.impl.ModeSetting style = new tech.pain.client.modules.api.setting.impl.ModeSetting("Стиль HUD", "Cool", "Liquid Glass", "Modern", "Classic");
+   public final tech.pain.client.modules.api.setting.impl.ModeSetting style = new tech.pain.client.modules.api.setting.impl.ModeSetting("Стиль HUD", "New Liquid", "New Black", "Cool", "Liquid Glass", "Modern", "Classic");
    public final tech.pain.client.modules.api.setting.impl.ModeSetting watermarkStyle = new tech.pain.client.modules.api.setting.impl.ModeSetting("Ватермарка", "Обычная", "Dynamic Island");
    private final MultiBooleanSetting elementsSetting = MultiBooleanSetting.create("Элементы", List.of("Ватермарка", "Эффекты", "Модераторы", "Уведомления", "Информация", "Бинды", "Таргет худ", "Лирикс"));
    private final List<DraggableHudElement> elements = new ArrayList();

@@ -79,6 +79,10 @@ public abstract class HeldItemRendererMixin {
          viewModel.applyHandScale(matrices, arm);
       }
 
+      if (hand == Hand.MAIN_HAND && player.getMainArm() == Arm.RIGHT) {
+         SwingAnimation.INSTANCE.recordBlade(matrices, item);
+      }
+
    }
 
    @Inject(
@@ -143,6 +147,7 @@ public abstract class HeldItemRendererMixin {
       }
 
       vertexConsumers.draw();
+      SwingAnimation.INSTANCE.drawTrail();
    }
 
    @Inject(method = {"renderFirstPersonItem"}, at = {@At("HEAD")})

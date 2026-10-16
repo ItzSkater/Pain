@@ -54,6 +54,8 @@ public class PainServersScreen extends Screen implements IMinecraft {
    private final long openedAt = System.currentTimeMillis();
    private final List<Hit> hits = new ArrayList<>();
    private final java.util.Map<String, Float> hover = new java.util.HashMap<>();
+   /** Загруженные иконки серверов: адрес → {текстура, хеш картинки, по которой она сделана}. */
+   private final java.util.Map<String, Object[]> icons = new java.util.HashMap<>();
    private ServerList servers;
    private MultiplayerServerListPinger pinger = new MultiplayerServerListPinger();
    private int selected = -1;
@@ -125,10 +127,55 @@ public class PainServersScreen extends Screen implements IMinecraft {
    @Override
    public void removed() {
       this.pinger.cancel();
+      for (Object[] icon : this.icons.values()) {
+         if (icon[0] != null) {
+            mc.getTextureManager().destroyTexture((net.minecraft.util.Identifier)icon[0]);
+         }
+      }
+
+      this.icons.clear();
    }
 
    private static String plain(Text text) {
       return text == null ? "" : text.getString().replaceAll("§.", "").replaceAll("\\s+", " ").trim();
+   }
+
+   /**
+    * Иконка сервера как текстура. Картинка приходит в ответе на опрос (и хранится в servers.dat с прошлого раза),
+    * поэтому сначала показывается сохранённая, а после опроса — свежая. Нет иконки или она битая — null.
+    */
+   private net.minecraft.util.Identifier iconFor(ServerInfo info) {
+      byte[] bytes = info.getFavicon();
+      if (bytes == null || bytes.length == 0) {
+         return null;
+      }
+
+      int hash = java.util.Arrays.hashCode(bytes);
+      Object[] cached = this.icons.get(info.address);
+      if (cached != null && (Integer)cached[1] == hash) {
+         return (net.minecraft.util.Identifier)cached[0];
+      }
+
+      net.minecraft.util.Identifier id = net.minecraft.util.Identifier.of("pain", "servers/" + Integer.toHexString(info.address.hashCode()) + "_" + Integer.toHexString(hash));
+      try {
+         net.minecraft.client.texture.NativeImage image = net.minecraft.client.texture.NativeImage.read(bytes);
+         if (image.getWidth() != 64 || image.getHeight() != 64) {
+            image.close();
+            this.icons.put(info.address, new Object[]{null, hash});
+            return null;
+         }
+
+         if (cached != null && cached[0] != null) {
+            mc.getTextureManager().destroyTexture((net.minecraft.util.Identifier)cached[0]);
+         }
+
+         mc.getTextureManager().registerTexture(id, new net.minecraft.client.texture.NativeImageBackedTexture(image));
+         this.icons.put(info.address, new Object[]{id, hash});
+         return id;
+      } catch (Exception e) {
+         this.icons.put(info.address, new Object[]{null, hash});
+         return null;
+      }
    }
 
    private void say(String text) {
@@ -238,10 +285,19 @@ public class PainServersScreen extends Screen implements IMinecraft {
          // кружок с первой буквой названия, цвет каймы — состояние сервера
          float cx = x + 16.0F;
          float cy = ry + ROW / 2.0F - 10.0F;
-         DrawUtil.drawRoundedRect(m, cx, cy, 20.0F, 20.0F, BorderRadius.all(10.0F), new ColorRGBA(255, 255, 255, 26.0F * appear));
-         DrawUtil.drawRoundedBorder(m, cx, cy, 20.0F, 20.0F, -0.5F, BorderRadius.all(10.0F), dot.withAlpha(220.0F * appear));
-         String letter = info.name.isEmpty() ? "?" : info.name.substring(0, 1).toUpperCase();
-         ctx.drawText(Fonts.BOLD.getFont(9.0F), letter, cx + 10.0F - Fonts.BOLD.getWidth(letter, 9.0F) / 2.0F, cy + 5.5F, new ColorRGBA(255, 255, 255, alpha));
+         net.minecraft.util.Identifier icon = this.iconFor(info);
+         if (icon != null) {
+            // иконка сервера; состояние показывает точка в углу
+            DrawUtil.drawRoundedTexture(m, icon, cx, cy, 20.0F, 20.0F, BorderRadius.all(5.0F), new ColorRGBA(255, 255, 255, alpha));
+            DrawUtil.drawRoundedBorder(m, cx, cy, 20.0F, 20.0F, -0.5F, BorderRadius.all(5.0F), new ColorRGBA(255, 255, 255, 50.0F * appear));
+            DrawUtil.drawRoundedRect(m, cx + 14.5F, cy + 14.5F, 7.0F, 7.0F, BorderRadius.all(3.5F), new ColorRGBA(12, 12, 18, 255.0F * appear));
+            DrawUtil.drawRoundedRect(m, cx + 15.5F, cy + 15.5F, 5.0F, 5.0F, BorderRadius.all(2.5F), dot.withAlpha(255.0F * appear));
+         } else {
+            DrawUtil.drawRoundedRect(m, cx, cy, 20.0F, 20.0F, BorderRadius.all(10.0F), new ColorRGBA(255, 255, 255, 26.0F * appear));
+            DrawUtil.drawRoundedBorder(m, cx, cy, 20.0F, 20.0F, -0.5F, BorderRadius.all(10.0F), dot.withAlpha(220.0F * appear));
+            String letter = info.name.isEmpty() ? "?" : info.name.substring(0, 1).toUpperCase();
+            ctx.drawText(Fonts.BOLD.getFont(9.0F), letter, cx + 10.0F - Fonts.BOLD.getWidth(letter, 9.0F) / 2.0F, cy + 5.5F, new ColorRGBA(255, 255, 255, alpha));
+         }
          float textX = cx + 28.0F;
          float rightW = 70.0F;
          float textW = w - 16.0F - 28.0F - 16.0F - rightW;

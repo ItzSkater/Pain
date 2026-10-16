@@ -60,9 +60,15 @@ public final class Minimap extends Module {
    private NativeImage image;
    private int centerX = Integer.MIN_VALUE;
    private int centerZ;
-   private long lastScan;
    private boolean lastCave;
    private Object lastWorld;
+   private final int[] colors = new int[TEX * TEX];
+   private final int[] heights = new int[TEX * TEX];
+   // куски строк, которые надо отсканировать в первую очередь: начало, конец, строка
+   private final java.util.ArrayDeque<int[]> pending = new java.util.ArrayDeque<>();
+   private float refreshDebt;
+   private int refreshRow;
+   private long lastFrame;
 
    private Minimap() {
    }
@@ -98,60 +104,150 @@ public final class Minimap extends Module {
       return Integer.MIN_VALUE;
    }
 
-   private void scan(boolean caveMode) {
+   /**
+    * Карта обновляется по кусочку каждый кадр, а не целиком раз в полсекунды: при ходьбе уже снятые
+    * пиксели сдвигаются и досканируются только открывшиеся полосы, а весь рельеф перепроходится
+    * строками с той же частотой, что и раньше. На кадр уходит не больше ~1 мс.
+    */
+   private void update(int px, int pz, int py, boolean caveMode, float dt) {
       if (this.image == null) {
          this.image = new NativeImage(TEX, TEX, false);
          this.texture = new NativeImageBackedTexture(this.image);
          mc.getTextureManager().registerTexture(TEXTURE, this.texture);
       }
 
-      int px = MathHelper.floor(mc.player.getX());
-      int pz = MathHelper.floor(mc.player.getZ());
-      int py = MathHelper.floor(mc.player.getY());
-      this.centerX = px;
-      this.centerZ = pz;
+      boolean changed = false;
+      if (this.centerX == Integer.MIN_VALUE || Math.abs(px - this.centerX) >= 8 || Math.abs(pz - this.centerZ) >= 8) {
+         this.recenter(px, pz);
+         changed = true;
+      }
+
       BlockPos.Mutable pos = new BlockPos.Mutable();
-      int half = TEX / 2;
-      int[] previousRow = new int[TEX];
-      java.util.Arrays.fill(previousRow, Integer.MIN_VALUE);
+      long deadline = System.nanoTime() + 1200000L;
 
-      for (int iz = 0; iz < TEX; ++iz) {
-         for (int ix = 0; ix < TEX; ++ix) {
-            int x = px - half + ix;
-            int z = pz - half + iz;
-            int color = 0xFF0B0B0F;
-            int y = Integer.MIN_VALUE;
-            if (mc.world.getChunkManager().isChunkLoaded(x >> 4, z >> 4)) {
-               y = this.surfaceY(x, z, caveMode, py, pos);
-               if (y != Integer.MIN_VALUE) {
-                  BlockState state = mc.world.getBlockState(pos.set(x, y, z));
-                  MapColor map = state.getMapColor(mc.world, pos);
-                  int rgb = map == MapColor.CLEAR ? 0x101014 : map.color;
-                  // тень по высоте, как на игровой карте: выше северного соседа — светлее, ниже — темнее
-                  int north = previousRow[ix];
-                  float shade = north == Integer.MIN_VALUE || north == y ? 0.86F : (y > north ? 1.0F : 0.7F);
-                  if (!state.getFluidState().isEmpty()) {
-                     shade = 0.9F;
-                  }
+      while (!this.pending.isEmpty() && System.nanoTime() < deadline) {
+         int[] seg = this.pending.pollFirst();
+         this.scanRow(seg[2], seg[0], seg[1], caveMode, py, pos);
+         changed = true;
+      }
 
-                  if (caveMode) {
-                     // в срезе всё, что ниже игрока, уходит в темноту — видно, где обрыв
-                     shade *= MathHelper.clamp(1.0F - (float)(py - y - 1) * 0.045F, 0.35F, 1.0F);
-                  }
+      if (this.pending.isEmpty()) {
+         // плановый проход по всем строкам: полный круг за полсекунды, как раньше
+         this.refreshDebt = Math.min((float)TEX, this.refreshDebt + (float)TEX * dt / 0.5F);
 
-                  int r = (int)((float)(rgb >> 16 & 255) * shade);
-                  int g = (int)((float)(rgb >> 8 & 255) * shade);
-                  int b = (int)((float)(rgb & 255) * shade);
-                  color = 0xFF000000 | r << 16 | g << 8 | b;
-               }
-            }
-
-            previousRow[ix] = y;
-            this.image.setColorArgb(ix, iz, color);
+         while (this.refreshDebt >= 1.0F && System.nanoTime() < deadline) {
+            this.scanRow(this.refreshRow, 0, TEX, caveMode, py, pos);
+            this.refreshRow = (this.refreshRow + 1) % TEX;
+            this.refreshDebt--;
+            changed = true;
          }
       }
 
-      this.texture.upload();
+      if (changed) {
+         this.texture.upload();
+      }
+   }
+
+   /** Сдвигает снятую карту под новый центр; открывшиеся края ставит в очередь на сканирование. */
+   private void recenter(int px, int pz) {
+      int dx = px - this.centerX;
+      int dz = pz - this.centerZ;
+      boolean fresh = this.centerX == Integer.MIN_VALUE || Math.abs(dx) >= TEX || Math.abs(dz) >= TEX;
+      this.centerX = px;
+      this.centerZ = pz;
+      if (fresh) {
+         java.util.Arrays.fill(this.colors, 0xFF0B0B0F);
+         java.util.Arrays.fill(this.heights, Integer.MIN_VALUE);
+         this.pending.clear();
+
+         for (int iz = 0; iz < TEX; ++iz) {
+            this.pending.add(new int[]{0, TEX, iz});
+         }
+      } else {
+         int[] oc = this.colors.clone();
+         int[] oh = this.heights.clone();
+
+         for (int iz = 0; iz < TEX; ++iz) {
+            for (int ix = 0; ix < TEX; ++ix) {
+               int sx = ix + dx;
+               int sz = iz + dz;
+               boolean inside = sx >= 0 && sx < TEX && sz >= 0 && sz < TEX;
+               this.colors[iz * TEX + ix] = inside ? oc[sz * TEX + sx] : 0xFF0B0B0F;
+               this.heights[iz * TEX + ix] = inside ? oh[sz * TEX + sx] : Integer.MIN_VALUE;
+            }
+         }
+
+         // недоделанные куски очереди переезжают вместе с картой
+         java.util.ArrayDeque<int[]> moved = new java.util.ArrayDeque<>();
+
+         for (int[] seg : this.pending) {
+            int iz = seg[2] - dz;
+            int a = Math.max(0, seg[0] - dx);
+            int b = Math.min(TEX, seg[1] - dx);
+            if (iz >= 0 && iz < TEX && a < b) {
+               moved.add(new int[]{a, b, iz});
+            }
+         }
+
+         this.pending.clear();
+         this.pending.addAll(moved);
+         // открывшиеся полосы — первыми в очередь
+         for (int iz = 0; iz < TEX; ++iz) {
+            boolean newRow = dz > 0 ? iz >= TEX - dz : iz < -dz;
+            if (newRow) {
+               this.pending.addFirst(new int[]{0, TEX, iz});
+            } else if (dx > 0) {
+               this.pending.addFirst(new int[]{TEX - dx, TEX, iz});
+            } else if (dx < 0) {
+               this.pending.addFirst(new int[]{0, -dx, iz});
+            }
+         }
+      }
+
+      for (int iz = 0; iz < TEX; ++iz) {
+         for (int ix = 0; ix < TEX; ++ix) {
+            this.image.setColorArgb(ix, iz, this.colors[iz * TEX + ix]);
+         }
+      }
+   }
+
+   private void scanRow(int iz, int ix0, int ix1, boolean caveMode, int py, BlockPos.Mutable pos) {
+      int half = TEX / 2;
+
+      for (int ix = ix0; ix < ix1; ++ix) {
+         int x = this.centerX - half + ix;
+         int z = this.centerZ - half + iz;
+         int color = 0xFF0B0B0F;
+         int y = Integer.MIN_VALUE;
+         if (mc.world.getChunkManager().isChunkLoaded(x >> 4, z >> 4)) {
+            y = this.surfaceY(x, z, caveMode, py, pos);
+            if (y != Integer.MIN_VALUE) {
+               BlockState state = mc.world.getBlockState(pos.set(x, y, z));
+               MapColor map = state.getMapColor(mc.world, pos);
+               int rgb = map == MapColor.CLEAR ? 0x101014 : map.color;
+               // тень по высоте, как на игровой карте: выше северного соседа — светлее, ниже — темнее
+               int north = iz > 0 ? this.heights[(iz - 1) * TEX + ix] : Integer.MIN_VALUE;
+               float shade = north == Integer.MIN_VALUE || north == y ? 0.86F : (y > north ? 1.0F : 0.7F);
+               if (!state.getFluidState().isEmpty()) {
+                  shade = 0.9F;
+               }
+
+               if (caveMode) {
+                  // в срезе всё, что ниже игрока, уходит в темноту — видно, где обрыв
+                  shade *= MathHelper.clamp(1.0F - (float)(py - y - 1) * 0.045F, 0.35F, 1.0F);
+               }
+
+               int r = (int)((float)(rgb >> 16 & 255) * shade);
+               int g = (int)((float)(rgb >> 8 & 255) * shade);
+               int b = (int)((float)(rgb & 255) * shade);
+               color = 0xFF000000 | r << 16 | g << 8 | b;
+            }
+         }
+
+         this.heights[iz * TEX + ix] = y;
+         this.colors[iz * TEX + ix] = color;
+         this.image.setColorArgb(ix, iz, color);
+      }
    }
 
    @EventTarget
@@ -163,18 +259,18 @@ public final class Minimap extends Module {
       boolean caveMode = this.cave.is("Всегда срез") || this.cave.is("Авто") && (mc.world.getDimension().hasCeiling() || !mc.world.isSkyVisible(mc.player.getBlockPos().up()));
       int px = MathHelper.floor(mc.player.getX());
       int pz = MathHelper.floor(mc.player.getZ());
-      float r = this.range.getCurrent();
       long now = System.currentTimeMillis();
-      float margin = (float)TEX / 2.0F - r * 1.42F;
-      boolean movedFar = Math.abs(px - this.centerX) > margin || Math.abs(pz - this.centerZ) > margin;
-      // карту пересчитываем раз в полсекунды, при смене мира, режима или когда игрок ушёл к краю снятой области
-      if (this.centerX == Integer.MIN_VALUE || movedFar || caveMode != this.lastCave || mc.world != this.lastWorld || now - this.lastScan > 500L) {
-         this.lastScan = now;
+      float dt = this.lastFrame == 0L ? 0.016F : Math.min(0.1F, (float)(now - this.lastFrame) / 1000.0F);
+      this.lastFrame = now;
+      // смена мира или режима среза — карту снимаем заново
+      if (caveMode != this.lastCave || mc.world != this.lastWorld) {
          this.lastCave = caveMode;
          this.lastWorld = mc.world;
-         this.scan(caveMode);
+         this.centerX = Integer.MIN_VALUE;
       }
 
+      this.update(px, pz, MathHelper.floor(mc.player.getY()), caveMode, dt);
+      float r = this.range.getCurrent();
       CustomDrawContext ctx = event.getContext();
       MatrixStack m = ctx.getMatrices();
       float sw = (float)mc.getWindow().getScaledWidth();

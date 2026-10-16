@@ -23,8 +23,8 @@ public final class ProjectionUtil implements IMinecraft {
    @NotNull
    public static Vec3d worldSpaceToScreenSpace(Vec3d pos) {
       Vector3f delta = pos.subtract(mc.getEntityRenderDispatcher().camera.getPos()).toVector3f();
-      int[] viewport = new int[4];
-      GL11.glGetIntegerv(2978, viewport);
+      // размер окна берём у игры, а не запросом к видеокарте: этот вызов идёт для каждой плашки и стрелки каждый кадр
+      int[] viewport = new int[]{0, 0, mc.getWindow().getFramebufferWidth(), mc.getWindow().getFramebufferHeight()};
       Vector3f target = new Vector3f();
       Vector4f transformedCoordinates = (new Vector4f(delta.x, delta.y, delta.z, 1.0F)).mul(Render3DUtil.getLastWorldSpaceMatrix());
       Matrix4f matrixProj = new Matrix4f(Render3DUtil.getLastProjMat());

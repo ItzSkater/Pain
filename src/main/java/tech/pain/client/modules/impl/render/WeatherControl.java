@@ -64,6 +64,9 @@ public final class WeatherControl extends Module {
    private int gridZ;
    private long gridAt;
    private final long started = System.nanoTime();
+   private float fx;
+   private float fy;
+   private float fz = -1.0F;
 
    private WeatherControl() {
       Random rnd = new Random(7L);
@@ -92,6 +95,11 @@ public final class WeatherControl extends Module {
       Camera camera = mc.gameRenderer.getCamera();
       Vec3d cam = camera.getPos();
       this.refreshHeights(cam);
+      // куда смотрит камера: капли за спиной не рисуем, их всё равно не видно
+      org.joml.Vector3f forward = new org.joml.Vector3f(0.0F, 0.0F, -1.0F).rotate(camera.getRotation());
+      this.fx = forward.x;
+      this.fy = forward.y;
+      this.fz = forward.z;
       double time = (double)(System.nanoTime() - this.started) / 1.0E9;
       float w = this.wind.getCurrent();
       // ветер дует порывами; направление медленно гуляет
@@ -189,6 +197,10 @@ public final class WeatherControl extends Module {
          double x = wrap((double)this.seeds[k] * size + wx * blown * slant - cam.x, size);
          double y = wrap((double)this.seeds[k + 1] * tall - speed * time - cam.y, tall);
          double z = wrap((double)this.seeds[k + 2] * size + wz * blown * slant - cam.z, size);
+         if (x * (double)this.fx + y * (double)this.fy + z * (double)this.fz < -1.5) {
+            continue;
+         }
+
          double flat = Math.sqrt(x * x + z * z);
          float fade = (float)Math.min(1.0, (size * 0.5 - flat) / 4.0) * (float)Math.min(1.0, (tall * 0.5 - Math.abs(y)) / 2.0);
          if (fade <= 0.0F || flat < 0.5 && Math.abs(y) < 1.5) {
@@ -248,6 +260,10 @@ public final class WeatherControl extends Module {
          double x = wrap((double)this.seeds[k] * size + wx * drift + swayX - cam.x, size);
          double y = wrap((double)this.seeds[k + 1] * tall - speed * time - cam.y, tall);
          double z = wrap((double)this.seeds[k + 2] * size + wz * drift + swayZ - cam.z, size);
+         if (x * (double)this.fx + y * (double)this.fy + z * (double)this.fz < -1.0) {
+            continue;
+         }
+
          double flat = Math.sqrt(x * x + z * z);
          float fade = (float)Math.min(1.0, (size * 0.5 - flat) / 4.0) * (float)Math.min(1.0, (tall * 0.5 - Math.abs(y)) / 2.0);
          if (fade <= 0.0F || flat < 0.35 && Math.abs(y) < 0.6) {
